@@ -1,18 +1,20 @@
 """Host-side runtime helpers for TileLang kernel compilation and execution.
 
 Centralises platform-specific logic so that kernel code, examples, and
-benchmarks stay portable across CUDA, Metal / MPS, and CPU / LLVM backends.
+benchmarks stay portable across CUDA and Metal / MPS backends.
 
 Exported helpers fall into six categories:
 
 1. **Metal workarounds** — :func:`setup_metal_workarounds`
-2. **dtype helpers** — :func:`normalize_elem_dtype`, :func:`require_float32_prim`
+2. **dtype helpers** — :func:`torch_to_tl_dtype`, :func:`normalize_elem_dtype`
 3. **Target / device / backend detection** — :func:`default_tilelang_target`,
    :func:`default_torch_device`, :func:`default_execution_backend`, etc.
-4. **Tile-size heuristic** — :func:`suggest_pointwise_config`
+4. **Tile-size heuristic** — :func:`suggest_tile_config`
+   (legacy alias: :func:`suggest_pointwise_config`)
 5. **Compilation** — :func:`compile_prim`
 6. **Kernel invocation & benchmarking** — :func:`invoke_kernel`,
-   :func:`make_kernel_runner`, :func:`sync_device`, :func:`bench_ms`
+   :func:`invoke_unary_kernel`, :func:`make_kernel_runner`,
+   :func:`make_unary_kernel_runner`, :func:`sync_device`, :func:`bench_ms`
 
 Environment variables
 ---------------------
@@ -44,13 +46,16 @@ __all__ = [
     "default_torch_device",
     "heuristic_tilelang_target",
     "invoke_kernel",
+    "invoke_unary_kernel",
     "make_kernel_runner",
+    "make_unary_kernel_runner",
     "normalize_elem_dtype",
-    "require_float32_prim",
     "setup_metal_workarounds",
     "suggest_pointwise_config",
+    "suggest_tile_config",
     "sync_device",
     "target_kind",
+    "torch_to_tl_dtype",
 ]
 
 # ── Metal / arm64 macOS workarounds ──────────────────────────────────────
@@ -81,6 +86,12 @@ _DTYPE_MAP: dict[str, Any] = {
     "bf16": T.bfloat16,
 }
 
+_TORCH_TO_TL: dict[torch.dtype, Any] = {
+    torch.float32: T.float32,
+    torch.float16: T.float16,
+    torch.bfloat16: T.bfloat16,
+}
+
 
 def normalize_elem_dtype(dtype: Any) -> Any:
     """Map common dtype string aliases to ``tilelang.language`` scalar types.
@@ -94,25 +105,21 @@ def normalize_elem_dtype(dtype: Any) -> Any:
     return _DTYPE_MAP.get(dtype, dtype)
 
 
-def require_float32_prim(
-    in_dtype: Any,
-    out_dtype: Any,
-    *,
-    what: str = "this kernel",
-) -> None:
-    """Raise ``ValueError`` unless both *in_dtype* and *out_dtype* are float32.
+def torch_to_tl_dtype(dtype: torch.dtype) -> Any:
+    """Convert a :class:`torch.dtype` to the matching TileLang scalar type.
 
-    Current ``@T.prim_func`` templates hard-code ``T.float32`` in their
-    ``T.Tensor`` annotations; passing a different dtype would silently
-    produce wrong results at the TIR level.
+    Supported: ``float32``, ``float16``, ``bfloat16``.
+
+    >>> torch_to_tl_dtype(torch.float16)  # → T.float16
     """
-    in_norm = normalize_elem_dtype(in_dtype)
-    out_norm = normalize_elem_dtype(out_dtype)
-    if in_norm != T.float32 or out_norm != T.float32:
+    tl = _TORCH_TO_TL.get(dtype)
+    if tl is None:
         raise ValueError(
-            f"{what} currently only supports float32 I/O; "
-            f"got in_dtype={in_dtype!r}, out_dtype={out_dtype!r}"
+            f"Unsupported dtype {dtype}; expected one of "
+            f"{', '.join(str(d) for d in _TORCH_TO_TL)}"
         )
+    return tl
+
 
 
 # ── Target / device / backend detection ─────────────────────────────────
@@ -183,7 +190,12 @@ def default_torch_device(target: Optional[str] = None) -> str:
                 return "mps"
         except Exception:
             pass
-        return "cpu"
+        raise RuntimeError(
+            "TileLang target is 'metal' but PyTorch MPS backend is not "
+            "available on this system.  Either set TILELANG_TARGET to a "
+            "supported target (e.g. 'cuda', 'llvm') or run on a device "
+            "with MPS support (Apple Silicon macOS)."
+        )
     return "cpu"
 
 
@@ -203,13 +215,13 @@ def default_execution_backend(
 
 # ── Tile-size heuristic ─────────────────────────────────────────────────
 
-def suggest_pointwise_config(
+def suggest_tile_config(
     num_elements: int,
     *,
     max_block_size: int = 1024,
     preferred_threads: int = 128,
 ) -> tuple[int, int]:
-    """Choose ``(block_size, threads)`` for a 1-D pointwise kernel.
+    """Choose ``(block_size, threads)`` for a 1-D element-wise kernel.
 
     The heuristic tries ``block_size = threads * k`` for
     ``k ∈ {8, 4, 2, 1}`` (largest first) and picks the first value
@@ -252,6 +264,10 @@ def suggest_pointwise_config(
     return candidates[0], threads
 
 
+suggest_pointwise_config = suggest_tile_config
+"""Legacy alias for :func:`suggest_tile_config`."""
+
+
 # ── Compilation ─────────────────────────────────────────────────────────
 
 def compile_prim(
@@ -285,7 +301,36 @@ def compile_prim(
     return tilelang.compile(prim, **kwargs)
 
 
-# ── Kernel invocation ───────────────────────────────────────────────────
+# ── Kernel invocation (unified) ─────────────────────────────────────────
+
+def _invoke_impl(
+    kernel: Any,
+    *inputs: torch.Tensor,
+    out: Optional[torch.Tensor],
+    tilelang_target: Optional[str],
+    execution_backend: Optional[str],
+) -> torch.Tensor:
+    """Shared logic for :func:`invoke_kernel` / :func:`invoke_unary_kernel`."""
+    original_shape = inputs[0].shape
+    flat_inputs = [inp.contiguous().view(-1) for inp in inputs]
+
+    if out is None:
+        out = torch.empty(original_shape, dtype=inputs[0].dtype,
+                          device=inputs[0].device)
+    out_flat = out.contiguous().view(-1)
+
+    kind = target_kind(tilelang_target)
+    if kind == "metal" and execution_backend == "torch":
+        kernel(*flat_inputs, out_flat)
+        return out
+
+    ret = kernel(*flat_inputs)
+    if ret is not None:
+        out_flat.copy_(ret)
+    else:
+        kernel(*flat_inputs, out_flat)
+    return out
+
 
 def invoke_kernel(
     kernel: Any,
@@ -296,7 +341,7 @@ def invoke_kernel(
     tilelang_target: Optional[str] = None,
     execution_backend: Optional[str] = None,
 ) -> torch.Tensor:
-    """Call a compiled binary-pointwise kernel portably.
+    """Call a compiled binary kernel portably.
 
     Input tensors of **any shape** are flattened to 1-D before being
     passed to the compiled kernel (which operates on flat buffers).
@@ -313,32 +358,57 @@ def invoke_kernel(
         when ``None``.
     tilelang_target, execution_backend
         Used to select the calling convention (Metal needs 3-arg call).
-
-    Returns
-    -------
-    torch.Tensor
-        The result with the same shape as *x* (same object as *out*
-        when provided).
     """
-    original_shape = x.shape
-    x_flat = x.contiguous().view(-1)
-    y_flat = y.contiguous().view(-1)
+    return _invoke_impl(kernel, x, y, out=out,
+                        tilelang_target=tilelang_target,
+                        execution_backend=execution_backend)
 
-    if out is None:
-        out = torch.empty(original_shape, dtype=x.dtype, device=x.device)
-    out_flat = out.contiguous().view(-1)
 
+def invoke_unary_kernel(
+    kernel: Any,
+    x: torch.Tensor,
+    *,
+    out: Optional[torch.Tensor] = None,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Call a compiled unary kernel portably.
+
+    Flattens *x* to 1-D, runs the kernel, reshapes *out* to *x*.shape.
+    Metal + ``execution_backend="torch"`` uses a two-argument call
+    ``kernel(x_flat, out_flat)``; other backends use the same convention
+    as :func:`invoke_kernel` but with a single input buffer.
+    """
+    return _invoke_impl(kernel, x, out=out,
+                        tilelang_target=tilelang_target,
+                        execution_backend=execution_backend)
+
+
+# ── Benchmark runners (unified) ─────────────────────────────────────────
+
+def _make_runner_impl(
+    kernel: Any,
+    *,
+    n_inputs: int,
+    tilelang_target: Optional[str],
+    execution_backend: Optional[str],
+) -> Callable[..., None]:
+    """Shared logic for :func:`make_kernel_runner` / :func:`make_unary_kernel_runner`."""
     kind = target_kind(tilelang_target)
-    if kind == "metal" and execution_backend == "torch":
-        kernel(x_flat, y_flat, out_flat)
-        return out
 
-    ret = kernel(x_flat, y_flat)
-    if ret is not None:
-        out_flat.copy_(ret)
-    else:
-        kernel(x_flat, y_flat, out_flat)
-    return out
+    def _run(*args: torch.Tensor) -> None:
+        flat = [a.contiguous().view(-1) for a in args[:n_inputs]]
+        out_flat = args[n_inputs].contiguous().view(-1)
+        if kind == "metal" and execution_backend == "torch":
+            kernel(*flat, out_flat)
+            return
+        ret = kernel(*flat)
+        if ret is not None:
+            out_flat.copy_(ret)
+        else:
+            kernel(*flat, out_flat)
+
+    return _run
 
 
 def make_kernel_runner(
@@ -352,23 +422,21 @@ def make_kernel_runner(
     Tensors are flattened to 1-D internally.  Unlike :func:`invoke_kernel`,
     the runner always writes into a caller-provided *out* tensor.
     """
-    kind = target_kind(tilelang_target)
+    return _make_runner_impl(kernel, n_inputs=2,
+                             tilelang_target=tilelang_target,
+                             execution_backend=execution_backend)
 
-    def _run(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor) -> None:
-        x_flat = x.contiguous().view(-1)
-        y_flat = y.contiguous().view(-1)
-        out_flat = out.contiguous().view(-1)
 
-        if kind == "metal" and execution_backend == "torch":
-            kernel(x_flat, y_flat, out_flat)
-            return
-        ret = kernel(x_flat, y_flat)
-        if ret is not None:
-            out_flat.copy_(ret)
-        else:
-            kernel(x_flat, y_flat, out_flat)
-
-    return _run
+def make_unary_kernel_runner(
+    kernel: Any,
+    *,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> Callable[[torch.Tensor, torch.Tensor], None]:
+    """Return ``run(x, out)`` for unary activation benchmark loops."""
+    return _make_runner_impl(kernel, n_inputs=1,
+                             tilelang_target=tilelang_target,
+                             execution_backend=execution_backend)
 
 
 # ── Benchmarking utilities ──────────────────────────────────────────────

@@ -11,8 +11,9 @@ kernel schedule and compilation path.
 - **Correct, comparable** TileLang kernels for common operator families
   (pointwise, reductions, BLAS-like, fusions, …).
 - A thin **runtime layer** (target / device / compilation helpers) so the
-  same entry-points run on **CUDA**, **Apple Metal (MPS)**, **CPU (LLVM)**,
-  and other TileLang-supported backends.
+  same entry-points run on **CUDA** and **Apple Metal (MPS)** for the
+  operators implemented here (`tileops.cuda` / `tileops.metal` only;
+  TileLang `llvm` / CPU kernels are not shipped).
 - **Examples** and **benchmarks** side-by-side with the code for regression
   checks and performance baselines against PyTorch.
 
@@ -23,10 +24,14 @@ Operator scope follows the living taxonomy in [`docs/ops.md`](docs/ops.md).
 | Path | Purpose |
 |------|---------|
 | [`tileops/`](tileops/) | Python package — kernels + host utilities |
-| [`tileops/runtime.py`](tileops/runtime.py) | Target selection, device mapping, `compile_prim`, `invoke_kernel` (N-D ↔ 1-D reshape), dtype helpers, tile-size heuristic, benchmarking utilities |
-| [`tileops/pointwise.py`](tileops/pointwise.py) | Generic GMEM-direct pointwise kernels for **N-D tensors**: `add`, `sub`, `mul`, `div`, `pow` — with automatic backend dispatch |
-| [`tileops/cuda/`](tileops/cuda/) | CUDA / HIP-specific optimised kernels (e.g. shared-memory tiled `add`) |
-| [`tileops/metal/`](tileops/metal/) | Metal-specific optimised kernels (placeholder for future simdgroup ops) |
+| [`tileops/runtime.py`](tileops/runtime.py) | Target selection, `compile_prim`, `invoke_kernel` / `invoke_unary_kernel`, `suggest_tile_config`, `bench_ms` |
+| [`tileops/_infra.py`](tileops/_infra.py) | Shared infrastructure: cached compiler, backend-op factory, facade dispatch |
+| [`tileops/binary.py`](tileops/binary.py) | Binary ops facade: `add`, `sub`, `mul`, `div`, `pow` |
+| [`tileops/activation.py`](tileops/activation.py) | Activation facade: `relu`, `gelu`, `silu`, `sigmoid`, `tanh` |
+| [`tileops/cuda/binary.py`](tileops/cuda/binary.py) | CUDA / HIP binary GMEM kernels + `add_shared` |
+| [`tileops/cuda/activation.py`](tileops/cuda/activation.py) | CUDA / HIP unary activations |
+| [`tileops/metal/binary.py`](tileops/metal/binary.py) | Metal binary GMEM kernels (separate copy) |
+| [`tileops/metal/activation.py`](tileops/metal/activation.py) | Metal unary activations (separate copy) |
 | [`tileops/__init__.py`](tileops/__init__.py) | Public re-exports (`from tileops import …`) |
 | [`examples/`](examples/) | Runnable correctness demos |
 | [`benchmark/`](benchmark/) | Performance comparisons (TileLang vs PyTorch) |
@@ -37,7 +42,7 @@ Operator scope follows the living taxonomy in [`docs/ops.md`](docs/ops.md).
 
 - **Python 3.9+**
 - **TileLang** and **PyTorch** in the same environment
-- A supported backend: **NVIDIA GPU + CUDA**, **Apple Silicon + Metal / MPS**, or **CPU**
+- A supported **GPU** backend: **NVIDIA + CUDA** or **Apple Silicon + Metal / MPS**.
 
 ## Quick start
 
@@ -59,20 +64,13 @@ python examples/pointwise.py --shape 8 3 224 224
 pytest tests/ -v
 ```
 
-Import the public API from the package root:
+Import and use — just like PyTorch:
 
 ```python
-from tileops import (
-    pointwise_add,
-    default_tilelang_target,
-    suggest_pointwise_config,
-    invoke_kernel,
-)
+from tileops import add, relu
 
-# Compile a kernel for any N-D shape
-kernel = pointwise_add(shape=(8, 3, 224, 224))
-# invoke_kernel handles flatten/reshape transparently
-out = invoke_kernel(kernel, x, y, tilelang_target=...)
+out = add(x, y)    # element-wise addition
+act = relu(x)      # ReLU activation
 ```
 
 ## License
