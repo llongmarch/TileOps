@@ -13,7 +13,10 @@ Exported helpers fall into six categories:
    (legacy alias: :func:`suggest_pointwise_config`)
 5. **Compilation** — :func:`compile_prim`
 6. **Kernel invocation & benchmarking** — :func:`invoke_kernel`,
-   :func:`invoke_unary_kernel`, :func:`make_kernel_runner`,
+   :func:`invoke_gemm_kernel`, :func:`invoke_gemv_kernel`,
+   :func:`invoke_row_reduce_kernel`,
+   :func:`invoke_unary_kernel`, :func:`invoke_nary_kernel`,
+   :func:`make_kernel_runner`,
    :func:`make_unary_kernel_runner`, :func:`sync_device`, :func:`bench_ms`
 
 Environment variables
@@ -46,6 +49,10 @@ __all__ = [
     "default_torch_device",
     "heuristic_tilelang_target",
     "invoke_kernel",
+    "invoke_gemm_kernel",
+    "invoke_gemv_kernel",
+    "invoke_row_reduce_kernel",
+    "invoke_nary_kernel",
     "invoke_unary_kernel",
     "make_kernel_runner",
     "make_unary_kernel_runner",
@@ -317,11 +324,14 @@ def _invoke_impl(
     if out is None:
         out = torch.empty(original_shape, dtype=inputs[0].dtype,
                           device=inputs[0].device)
-    out_flat = out.contiguous().view(-1)
+    out_contig = out.contiguous()
+    out_flat = out_contig.view(-1)
 
     kind = target_kind(tilelang_target)
     if kind == "metal" and execution_backend == "torch":
         kernel(*flat_inputs, out_flat)
+        if out_contig.data_ptr() != out.data_ptr():
+            out.copy_(out_contig)
         return out
 
     ret = kernel(*flat_inputs)
@@ -329,6 +339,8 @@ def _invoke_impl(
         out_flat.copy_(ret)
     else:
         kernel(*flat_inputs, out_flat)
+    if out_contig.data_ptr() != out.data_ptr():
+        out.copy_(out_contig)
     return out
 
 
@@ -362,6 +374,194 @@ def invoke_kernel(
     return _invoke_impl(kernel, x, y, out=out,
                         tilelang_target=tilelang_target,
                         execution_backend=execution_backend)
+
+
+def invoke_nary_kernel(
+    kernel: Any,
+    *inputs: Any,
+    out: Optional[torch.Tensor] = None,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Call a compiled kernel with one or more input tensors (same convention
+    as :func:`invoke_kernel`, but arity is not fixed at two).
+
+    The output shape and dtype follow ``inputs[0]``.  All tensors are
+    flattened to 1-D row-major buffers before the call.
+    """
+    if not inputs:
+        raise ValueError("invoke_nary_kernel requires at least one input tensor")
+    return _invoke_impl(
+        kernel, *inputs, out=out,
+        tilelang_target=tilelang_target,
+        execution_backend=execution_backend,
+    )
+
+
+def invoke_gemm_kernel(
+    kernel: Any,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    *,
+    out: Optional[torch.Tensor] = None,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Run a compiled ``gemm`` kernel: ``C = A @ B`` (row-major, 2-D only).
+
+    *A* must be ``(M, K)``, *B* ``(K, N)``; output is ``(M, N)``.  Tensors must
+    be contiguous on the device.  Metal + ``execution_backend="torch"`` uses
+    ``kernel(A, B, C)``; CUDA follows the same calling convention as other
+    TileLang torch kernels.
+    """
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("invoke_gemm_kernel expects 2-D A and B")
+    m, k_a = a.shape
+    k_b, n = b.shape
+    if k_a != k_b:
+        raise ValueError(
+            f"gemm: inner dimensions mismatch {k_a} vs {k_b} "
+            f"for shapes {tuple(a.shape)} @ {tuple(b.shape)}"
+        )
+    if a.dtype != b.dtype:
+        raise TypeError("gemm: A and B must have the same dtype")
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    aa = a.contiguous()
+    bb = b.contiguous()
+    if out is None:
+        out = torch.empty(m, n, dtype=a.dtype, device=a.device)
+    else:
+        if out.shape != (m, n):
+            raise ValueError(
+                f"gemm: out.shape={tuple(out.shape)} != ({m}, {n})"
+            )
+        if out.dtype != a.dtype or out.device != a.device:
+            raise TypeError("gemm: out dtype/device must match A")
+    cc = out.contiguous()
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(aa, bb, cc)
+        if cc.data_ptr() != out.data_ptr():
+            out.copy_(cc)
+        return out
+    ret = kernel(aa, bb)
+    if ret is not None:
+        cc.copy_(ret)
+    else:
+        kernel(aa, bb, cc)
+    if cc.data_ptr() != out.data_ptr():
+        out.copy_(cc)
+    return out
+
+
+def invoke_gemv_kernel(
+    kernel: Any,
+    a: torch.Tensor,
+    x: torch.Tensor,
+    *,
+    out: Optional[torch.Tensor] = None,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Run a compiled ``gemv`` kernel: ``y = A @ x`` (row-major).
+
+    *A* is ``(M, K)``, *x* is ``(K,)``; output is ``(M,)``.
+    """
+    if a.ndim != 2 or x.ndim != 1:
+        raise ValueError("invoke_gemv_kernel expects A 2-D and x 1-D")
+    m, k_a = a.shape
+    if x.shape[0] != k_a:
+        raise ValueError(
+            f"gemv: A.shape[1]={k_a} != len(x)={x.shape[0]}"
+        )
+    if a.dtype != x.dtype:
+        raise TypeError("gemv: A and x must have the same dtype")
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    aa = a.contiguous()
+    xx = x.contiguous()
+    if out is None:
+        out = torch.empty(m, dtype=a.dtype, device=a.device)
+    else:
+        if out.shape != (m,):
+            raise ValueError(f"gemv: out.shape={tuple(out.shape)} != ({m},)")
+        if out.dtype != a.dtype or out.device != a.device:
+            raise TypeError("gemv: out dtype/device must match A")
+    yy = out.contiguous()
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(aa, xx, yy)
+        if yy.data_ptr() != out.data_ptr():
+            out.copy_(yy)
+        return out
+    ret = kernel(aa, xx)
+    if ret is not None:
+        yy.copy_(ret)
+    else:
+        kernel(aa, xx, yy)
+    if yy.data_ptr() != out.data_ptr():
+        out.copy_(yy)
+    return out
+
+
+def invoke_row_reduce_kernel(
+    kernel: Any,
+    x_2d: torch.Tensor,
+    out_1d: torch.Tensor,
+    *,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Run a compiled row reduction: flat *x* ``(M * N,)`` layout of *x_2d*
+    ``(M, N)`` row-major, *out_1d* length *M*.
+
+    Used by ``tileops.reduction`` after merging the reduction axis to the
+    last dimension.
+    """
+    if x_2d.ndim != 2:
+        raise ValueError("invoke_row_reduce_kernel expects 2-D x_2d")
+    m, n = x_2d.shape
+    if out_1d.ndim != 1 or out_1d.numel() != m:
+        raise ValueError(
+            f"invoke_row_reduce_kernel: out_1d must be 1-D of length {m}, "
+            f"got shape {tuple(out_1d.shape)}"
+        )
+    if x_2d.dtype != out_1d.dtype or x_2d.device != out_1d.device:
+        raise TypeError("invoke_row_reduce_kernel: dtype/device mismatch")
+    xf = x_2d.contiguous().reshape(-1)
+    of = out_1d.contiguous().reshape(-1)
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(xf, of)
+        if of.data_ptr() != out_1d.data_ptr():
+            out_1d.copy_(of)
+        return out_1d
+    ret = kernel(xf)
+    if ret is not None:
+        of.copy_(ret)
+    else:
+        kernel(xf, of)
+    if of.data_ptr() != out_1d.data_ptr():
+        out_1d.copy_(of)
+    return out_1d
 
 
 def invoke_unary_kernel(

@@ -7,7 +7,7 @@
 * :func:`make_backend_op` — generates a backend compile function from a
   cached compiler.
 
-**Facade helpers** (used by ``binary.py``, ``activation.py``):
+**Facade helpers** (used by ``binary.py``, ``activation.py``, ``fused.py``):
 
 * :data:`BACKEND_PACKAGES` — target-kind → package mapping.
 * :func:`dispatch_compile` — resolve backend, import module, compile op.
@@ -162,3 +162,161 @@ def dispatch_compile(
         )
     return fn(shape, block_size, threads, dtype=dtype, target=target,
               execution_backend=execution_backend)
+
+
+def dispatch_compile_norm(
+    *,
+    op_name: str,
+    target: str,
+    rows: int,
+    cols: int,
+    threads: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    eps: Optional[float] = None,
+    backend_packages: dict[str, str] = BACKEND_PACKAGES,
+) -> Any:
+    """Compile a row-wise norm / softmax kernel (``tileops.*.norm``).
+
+    *rows* × *cols* is the logical 2-D view (leading dims merged, norm axis
+    last).  *eps* is forwarded for ``layer_norm`` / ``rms_norm`` cache keys.
+    """
+    kind = target_kind(target)
+    pkg = backend_packages.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No norm backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(backend_packages))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.norm")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.norm for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.norm has no {op_name}() for {target!r}"
+        )
+    return fn(
+        rows, cols, threads,
+        dtype=dtype,
+        target=target,
+        execution_backend=execution_backend,
+        eps=eps,
+    )
+
+
+def dispatch_compile_blas(
+    *,
+    op_name: str,
+    target: str,
+    m: int,
+    k: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    n: Optional[int] = None,
+    backend_packages: dict[str, str] = BACKEND_PACKAGES,
+) -> Any:
+    """Compile a BLAS-style kernel from ``tileops.*.blas``.
+
+    *op_name* is ``"gemm"`` or ``"gemv"``.  For ``gemm``, pass the inner
+    dimension *k* and the trailing matrix width *n* (``C`` is *m* × *n*).
+    For ``gemv``, *n* must be ``None`` — only *m* and *k* are used.
+    """
+    kind = target_kind(target)
+    pkg = backend_packages.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No blas backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(backend_packages))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.blas")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.blas for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.blas has no {op_name}() for {target!r}"
+        )
+    if op_name == "gemm":
+        if n is None:
+            raise ValueError("dispatch_compile_blas: gemm requires n=")
+        return fn(
+            m, n, k,
+            dtype=dtype,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    if op_name == "gemv":
+        return fn(
+            m, k,
+            dtype=dtype,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    raise ValueError(f"dispatch_compile_blas: unknown op_name {op_name!r}")
+
+
+_REDUCE_OP_TO_BACKEND_FN: dict[str, str] = {
+    "sum": "row_sum",
+    "mean": "row_mean",
+    "prod": "row_prod",
+    "amax": "row_amax",
+    "amin": "row_amin",
+}
+
+
+def dispatch_compile_reduce(
+    *,
+    op_name: str,
+    target: str,
+    rows: int,
+    cols: int,
+    threads: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    backend_packages: dict[str, str] = BACKEND_PACKAGES,
+) -> Any:
+    """Compile a row-wise reduction kernel (``tileops.*.reduce``).
+
+    *rows* × *cols* is the logical 2-D view after merging the reduction *dim*
+    to the last axis (``cols`` is the extent along that axis).
+    """
+    kind = target_kind(target)
+    pkg = backend_packages.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No reduce backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(backend_packages))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.reduce")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.reduce for target {target!r}"
+        ) from exc
+
+    fn_name = _REDUCE_OP_TO_BACKEND_FN.get(op_name)
+    if fn_name is None:
+        raise ValueError(
+            f"dispatch_compile_reduce: unknown op_name {op_name!r}; "
+            f"expected one of {sorted(_REDUCE_OP_TO_BACKEND_FN)}"
+        )
+    fn = getattr(mod, fn_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.reduce has no {fn_name}() for {target!r}"
+        )
+    return fn(
+        rows, cols, threads,
+        dtype=dtype,
+        target=target,
+        execution_backend=execution_backend,
+    )

@@ -308,6 +308,17 @@ def test_dtype_mismatch_raises():
         add(a, b)
 
 
+def test_noncontiguous_out_is_written_back(platform):
+    _, dev = platform
+    a = torch.randn(4, 3, dtype=torch.float32, device=dev)
+    b = torch.randn(4, 3, dtype=torch.float32, device=dev)
+    out = torch.empty(3, 4, dtype=torch.float32, device=dev).t()
+    assert not out.is_contiguous()
+    ret = add(a, b, out=out)
+    assert ret is out
+    torch.testing.assert_close(out, a + b, rtol=RTOL, atol=ATOL)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Runtime helpers
 # ═══════════════════════════════════════════════════════════════════════════

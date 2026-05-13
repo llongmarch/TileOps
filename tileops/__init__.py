@@ -9,10 +9,10 @@ Usage is as simple as PyTorch::
     mask = gt(x, y)          # float tensor of 0s and 1s
 
 All public symbols are listed in :data:`__all__`.  Kernel IR lives in
-backend subpackages (``tileops.cuda.binary``, ``tileops.metal.binary``,
-``tileops.cuda.activation``, …); facades ``tileops.binary`` and
-``tileops.activation`` provide the end-user API.
-Runtime helpers live in ``tileops.runtime``.
+backend subpackages (``tileops.cuda.binary``, ``tileops.metal.norm``, …);
+facades ``tileops.binary``, ``tileops.activation``, ``tileops.fused``,
+``tileops.norm``, ``tileops.blas``, and ``tileops.reduction`` provide the
+end-user API.  Runtime helpers live in ``tileops.runtime``.
 """
 
 # ── Re-exports: runtime ─────────────────────────────────────────────────
@@ -23,7 +23,11 @@ from tileops.runtime import (
     default_tilelang_target,
     default_torch_device,
     heuristic_tilelang_target,
+    invoke_gemm_kernel,
+    invoke_gemv_kernel,
     invoke_kernel,
+    invoke_nary_kernel,
+    invoke_row_reduce_kernel,
     invoke_unary_kernel,
     make_kernel_runner,
     make_unary_kernel_runner,
@@ -66,6 +70,31 @@ from tileops.activation import (
     log_sigmoid,
 )
 
+# ── Re-exports: fused (silu_and_mul, gelu_and_mul) ───────────────────────
+from tileops.fused import gelu_and_mul, silu_and_mul
+
+# ── Re-exports: BLAS (gemm, gemv) ────────────────────────────────────────
+from tileops.blas import gemm, gemv
+
+# ── Re-exports: reductions (sum / mean / … along dim) ─────────────────────
+from tileops.reduction import (
+    reduce_amax,
+    reduce_amin,
+    reduce_mean,
+    reduce_prod,
+    reduce_sum,
+)
+
+# ── Re-exports: norm (softmax, layer norm, …) ────────────────────────────
+from tileops.norm import (
+    layer_norm,
+    log_softmax,
+    online_softmax,
+    rms_norm,
+    safe_softmax,
+    softmax,
+)
+
 __all__ = [
     # runtime / host helpers
     "bench_ms",
@@ -74,7 +103,11 @@ __all__ = [
     "default_tilelang_target",
     "default_torch_device",
     "heuristic_tilelang_target",
+    "invoke_gemm_kernel",
+    "invoke_gemv_kernel",
     "invoke_kernel",
+    "invoke_row_reduce_kernel",
+    "invoke_nary_kernel",
     "invoke_unary_kernel",
     "make_kernel_runner",
     "make_unary_kernel_runner",
@@ -108,4 +141,23 @@ __all__ = [
     "softplus", "mish", "softsign",
     # activation — log
     "log_sigmoid",
+    # fused
+    "silu_and_mul",
+    "gelu_and_mul",
+    # blas
+    "gemm",
+    "gemv",
+    # reduction
+    "reduce_sum",
+    "reduce_mean",
+    "reduce_prod",
+    "reduce_amax",
+    "reduce_amin",
+    # norm
+    "softmax",
+    "safe_softmax",
+    "online_softmax",
+    "log_softmax",
+    "layer_norm",
+    "rms_norm",
 ]

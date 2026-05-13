@@ -282,10 +282,9 @@ def _mish_prim(n: int, bs: int, t: int, dtype: Any) -> Any:
                 if idx < n:
                     x = X[idx]
                     if x > 20.0:
-                        sp = x
+                        Y[idx] = x * tir_op.tanh(x)
                     else:
-                        sp = tir_op.log(1.0 + tir_op.exp(x))
-                    Y[idx] = x * tir_op.tanh(sp)
+                        Y[idx] = x * tir_op.tanh(tir_op.log(1.0 + tir_op.exp(x)))
     return main
 
 

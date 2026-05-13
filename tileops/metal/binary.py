@@ -246,7 +246,30 @@ def _atan2_prim(n: int, bs: int, t: int, dtype: Any) -> Any:
             for i in T.Parallel(bs):
                 idx = bx * bs + i
                 if idx < n:
-                    C[idx] = tir_op.atan2(A[idx], B[idx])
+                    y = A[idx]
+                    x = B[idx]
+                    if x > 0.0:
+                        C[idx] = tir_op.call_pure_extern("float32", "atan", y / x)
+                    else:
+                        if x < 0.0:
+                            if y >= 0.0:
+                                C[idx] = (
+                                    tir_op.call_pure_extern("float32", "atan", y / x)
+                                    + 3.141592653589793
+                                )
+                            else:
+                                C[idx] = (
+                                    tir_op.call_pure_extern("float32", "atan", y / x)
+                                    - 3.141592653589793
+                                )
+                        else:
+                            if y > 0.0:
+                                C[idx] = 1.5707963267948966
+                            else:
+                                if y < 0.0:
+                                    C[idx] = -1.5707963267948966
+                                else:
+                                    C[idx] = 0.0
     return main
 
 
@@ -265,26 +288,16 @@ def _copysign_prim(n: int, bs: int, t: int, dtype: Any) -> Any:
 
 
 def _hypot_prim(n: int, bs: int, t: int, dtype: Any) -> Any:
-    """Overflow-safe: ``|mx| * sqrt(1 + (mn/mx)^2)``."""
+    """``sqrt(a² + b²)``; branchless on Metal to avoid scoped immutable vars."""
     @T.prim_func
     def main(A: T.Tensor((n,), dtype), B: T.Tensor((n,), dtype), C: T.Tensor((n,), dtype)):
         with T.Kernel(T.ceildiv(n, bs), threads=t) as (bx,):
             for i in T.Parallel(bs):
                 idx = bx * bs + i
                 if idx < n:
-                    ax = tir_op.abs(A[idx])
-                    bx = tir_op.abs(B[idx])
-                    if ax >= bx:
-                        mx = ax
-                        mn = bx
-                    else:
-                        mx = bx
-                        mn = ax
-                    if mx == 0.0:
-                        C[idx] = 0.0
-                    else:
-                        r = mn / mx
-                        C[idx] = mx * tir_op.sqrt(1.0 + r * r)
+                    a = A[idx]
+                    b = B[idx]
+                    C[idx] = tir_op.sqrt(a * a + b * b)
     return main
 
 
