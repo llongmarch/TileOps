@@ -270,6 +270,11 @@ _REDUCE_OP_TO_BACKEND_FN: dict[str, str] = {
     "prod": "row_prod",
     "amax": "row_amax",
     "amin": "row_amin",
+    "argmax": "row_argmax",
+    "argmin": "row_argmin",
+    "all": "row_all",
+    "any": "row_any",
+    "cumsum": "row_cumsum",
 }
 
 

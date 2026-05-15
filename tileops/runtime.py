@@ -14,7 +14,7 @@ Exported helpers fall into six categories:
 5. **Compilation** — :func:`compile_prim`
 6. **Kernel invocation & benchmarking** — :func:`invoke_kernel`,
    :func:`invoke_gemm_kernel`, :func:`invoke_gemv_kernel`,
-   :func:`invoke_row_reduce_kernel`,
+   :func:`invoke_row_reduce_kernel`, :func:`invoke_row_index_reduce_kernel`,
    :func:`invoke_unary_kernel`, :func:`invoke_nary_kernel`,
    :func:`make_kernel_runner`,
    :func:`make_unary_kernel_runner`, :func:`sync_device`, :func:`bench_ms`
@@ -52,6 +52,7 @@ __all__ = [
     "invoke_gemm_kernel",
     "invoke_gemv_kernel",
     "invoke_row_reduce_kernel",
+    "invoke_row_index_reduce_kernel",
     "invoke_nary_kernel",
     "invoke_unary_kernel",
     "make_kernel_runner",
@@ -562,6 +563,60 @@ def invoke_row_reduce_kernel(
     if of.data_ptr() != out_1d.data_ptr():
         out_1d.copy_(of)
     return out_1d
+
+
+def invoke_row_index_reduce_kernel(
+    kernel: Any,
+    x_2d: torch.Tensor,
+    out_index: torch.Tensor,
+    *,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Same layout as :func:`invoke_row_reduce_kernel`, but *out_index* is
+    ``torch.int64`` (one reduction index per row).  Input/output dtypes may
+    differ; devices must match.
+    """
+    if x_2d.ndim != 2:
+        raise ValueError("invoke_row_index_reduce_kernel expects 2-D x_2d")
+    m = x_2d.shape[0]
+    if out_index.ndim != 1 or out_index.numel() != m:
+        raise ValueError(
+            f"invoke_row_index_reduce_kernel: out_index must be 1-D "
+            f"of length {m}, got shape {tuple(out_index.shape)}"
+        )
+    if out_index.dtype != torch.int64:
+        raise TypeError(
+            "invoke_row_index_reduce_kernel: out_index must be torch.int64"
+        )
+    if x_2d.device != out_index.device:
+        raise TypeError(
+            "invoke_row_index_reduce_kernel: x_2d and out_index "
+            "must live on the same device"
+        )
+    xf = x_2d.contiguous().reshape(-1)
+    oi = out_index.contiguous().reshape(-1)
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(xf, oi)
+        if oi.data_ptr() != out_index.data_ptr():
+            out_index.copy_(oi)
+        return out_index
+    ret = kernel(xf)
+    if ret is not None:
+        oi.copy_(ret)
+    else:
+        kernel(xf, oi)
+    if oi.data_ptr() != out_index.data_ptr():
+        out_index.copy_(oi)
+    return out_index
 
 
 def invoke_unary_kernel(

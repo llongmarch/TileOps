@@ -27,6 +27,7 @@ from tileops.runtime import (
     invoke_gemv_kernel,
     invoke_kernel,
     invoke_nary_kernel,
+    invoke_row_index_reduce_kernel,
     invoke_row_reduce_kernel,
     invoke_unary_kernel,
     make_kernel_runner,
@@ -78,8 +79,13 @@ from tileops.blas import gemm, gemv
 
 # ── Re-exports: reductions (sum / mean / … along dim) ─────────────────────
 from tileops.reduction import (
+    reduce_all,
     reduce_amax,
     reduce_amin,
+    reduce_any,
+    reduce_argmax,
+    reduce_argmin,
+    reduce_cumsum,
     reduce_mean,
     reduce_prod,
     reduce_sum,
@@ -106,6 +112,7 @@ __all__ = [
     "invoke_gemm_kernel",
     "invoke_gemv_kernel",
     "invoke_kernel",
+    "invoke_row_index_reduce_kernel",
     "invoke_row_reduce_kernel",
     "invoke_nary_kernel",
     "invoke_unary_kernel",
@@ -153,6 +160,11 @@ __all__ = [
     "reduce_prod",
     "reduce_amax",
     "reduce_amin",
+    "reduce_argmax",
+    "reduce_argmin",
+    "reduce_all",
+    "reduce_any",
+    "reduce_cumsum",
     # norm
     "softmax",
     "safe_softmax",
