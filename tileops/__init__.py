@@ -127,6 +127,16 @@ from tileops.conv import (
     conv2d,
 )
 
+# ── Re-exports: unary (math) ───────────────────────────────────────────────
+from tileops.unary import (
+    exp, log,
+    sqrt, rsqrt, square,
+    abs, sign, neg,
+    round, floor, ceil,
+    reciprocal,
+    clamp,
+)
+
 # ── Re-exports: quant (symmetric INT8 + vLLM-style helpers) ───────────────
 from tileops.quant import (
     dequantize_per_channel,
@@ -249,6 +259,13 @@ __all__ = [
     # conv
     "conv1d",
     "conv2d",
+    # unary (math)
+    "exp", "log",
+    "sqrt", "rsqrt", "square",
+    "abs", "sign", "neg",
+    "round", "floor", "ceil",
+    "reciprocal",
+    "clamp",
     # quant
     "quantize_per_tensor",
     "dequantize_per_tensor",

@@ -32,6 +32,19 @@
 
 ---
 
+## Unary（数学一元）
+
+| 类别 | 算子 |
+|------|------|
+| 指数/对数 | `exp`, `log` |
+| 幂/根 | `sqrt`, `rsqrt`, `square` |
+| 符号/绝对值 | `abs`, `sign`, `neg` |
+| 取整 | `round`, `floor`, `ceil` |
+| 倒数 | `reciprocal` |
+| 裁剪 | `clamp(min, max)` |
+
+---
+
 ## Binary（逐元素二元）
 
 **算术**：`add`, `sub`, `mul`, `div`, `pow`, `fmod`, `remainder`, `floor_div`
@@ -180,12 +193,12 @@
 | `tileops.fused` | `tileops.cuda.fused`, `tileops.metal.fused` |
 | `tileops.quant` | `tileops.cuda.quant`, `tileops.metal.quant` |
 | `tileops.conv` | `tileops.cuda.conv`, `tileops.metal.conv` |
+| `tileops.unary` | `tileops.cuda.unary`, `tileops.metal.unary` |
 
 ---
 
 ## 规划中（其他 · 尚未实现）
 
-- Pointwise：`exp`, `log`, `rsqrt`, `clamp`, 位运算等
 - 张量操作：`gather`, `scatter`, `where`, `masked_fill`, …
 - `group_norm`, `cross_entropy_loss`
 - 更多 attention 见上节
