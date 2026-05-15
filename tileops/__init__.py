@@ -71,8 +71,11 @@ from tileops.activation import (
     log_sigmoid,
 )
 
-# ── Re-exports: fused (silu_and_mul, gelu_and_mul) ───────────────────────
-from tileops.fused import gelu_and_mul, silu_and_mul
+# ── Re-exports: fused (SwiGLU / GeGLU + residual norms) ─────────────────────
+from tileops.fused import (
+    gelu_and_mul,
+    silu_and_mul,
+)
 
 # ── Re-exports: BLAS (gemm, mm, bmm, …) ───────────────────────────────────
 from tileops.blas import (
@@ -108,6 +111,8 @@ from tileops.norm import (
     rms_norm,
     safe_softmax,
     softmax,
+    skip_layer_norm,
+    skip_rms_norm,
 )
 
 __all__ = [
@@ -157,7 +162,7 @@ __all__ = [
     "softplus", "mish", "softsign",
     # activation — log
     "log_sigmoid",
-    # fused
+    # fused (activation kernels)
     "silu_and_mul",
     "gelu_and_mul",
     # blas
@@ -187,4 +192,6 @@ __all__ = [
     "log_softmax",
     "layer_norm",
     "rms_norm",
+    "skip_layer_norm",
+    "skip_rms_norm",
 ]

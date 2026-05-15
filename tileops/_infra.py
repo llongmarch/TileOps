@@ -179,7 +179,8 @@ def dispatch_compile_norm(
     """Compile a row-wise norm / softmax kernel (``tileops.*.norm``).
 
     *rows* × *cols* is the logical 2-D view (leading dims merged, norm axis
-    last).  *eps* is forwarded for ``layer_norm`` / ``rms_norm`` cache keys.
+    last).  *eps* is forwarded for normalization cache keys (
+    ``layer_norm``, ``rms_norm``, ``skip_rms_norm``, ``skip_layer_norm``).
     """
     kind = target_kind(target)
     pkg = backend_packages.get(kind)

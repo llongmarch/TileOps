@@ -155,12 +155,73 @@ def _rms_norm_prim(m: int, n: int, _: int, dtype: Any, eps: float) -> Any:
     return main
 
 
+def _skip_rms_norm_prim(m: int, n: int, _: int, dtype: Any, eps: float) -> Any:
+    """``Y = rms_norm(X + residual)`` fused per row."""
+    @T.prim_func
+    def main(
+        arg0_X: T.Tensor((m * n,), dtype),
+        arg1_Residual: T.Tensor((m * n,), dtype),
+        arg2_W: T.Tensor((n,), dtype),
+        arg3_Y: T.Tensor((m * n,), dtype),
+    ):
+        with T.Kernel(m, threads=1) as (row,):
+            base = row * n
+            ms_buf = T.alloc_local((1,), T.float32)
+            ms_buf[0] = 0.0
+            for j in range(n):
+                t = arg0_X[base + j] + arg1_Residual[base + j]
+                ms_buf[0] = ms_buf[0] + t * t
+            mean_sq = ms_buf[0] / float(n)
+            inv_rms = tir_op.rsqrt(mean_sq + eps)
+            for j in range(n):
+                t = arg0_X[base + j] + arg1_Residual[base + j]
+                arg3_Y[base + j] = t * inv_rms * arg2_W[j]
+
+    return main
+
+
+def _skip_layer_norm_prim(m: int, n: int, _: int, dtype: Any, eps: float) -> Any:
+    """``Y = layer_norm(X + residual)`` fused per row."""
+    @T.prim_func
+    def main(
+        arg0_X: T.Tensor((m * n,), dtype),
+        arg1_Residual: T.Tensor((m * n,), dtype),
+        arg2_Gamma: T.Tensor((n,), dtype),
+        arg3_Beta: T.Tensor((n,), dtype),
+        arg4_Y: T.Tensor((m * n,), dtype),
+    ):
+        with T.Kernel(m, threads=1) as (row,):
+            base = row * n
+            mean_buf = T.alloc_local((1,), T.float32)
+            mean_buf[0] = 0.0
+            for j in range(n):
+                t = arg0_X[base + j] + arg1_Residual[base + j]
+                mean_buf[0] = mean_buf[0] + t
+            mean_val = mean_buf[0] / float(n)
+            var_buf = T.alloc_local((1,), T.float32)
+            var_buf[0] = 0.0
+            for j in range(n):
+                t = arg0_X[base + j] + arg1_Residual[base + j]
+                d = t - mean_val
+                var_buf[0] = var_buf[0] + d * d
+            var_val = var_buf[0] / float(n)
+            inv_std = tir_op.rsqrt(var_val + eps)
+            for j in range(n):
+                t = arg0_X[base + j] + arg1_Residual[base + j]
+                normed = (t - mean_val) * inv_std
+                arg4_Y[base + j] = normed * arg2_Gamma[j] + arg3_Beta[j]
+
+    return main
+
+
 _NORM_PRIM: dict[str, Any] = {
     "softmax": _softmax_prim,
     "online_softmax": _online_softmax_prim,
     "log_softmax": _log_softmax_prim,
     "layer_norm": _layer_norm_prim,
     "rms_norm": _rms_norm_prim,
+    "skip_rms_norm": _skip_rms_norm_prim,
+    "skip_layer_norm": _skip_layer_norm_prim,
 }
 
 _cache: dict[tuple, Any] = {}
@@ -179,7 +240,7 @@ def _compile(
 ) -> Any:
     pe = float(eps) if eps is not None else 0.0
     tgt = target if target is not None else default_tilelang_target()
-    key = ("cuda_norm_v2", op_name, rows, cols, threads, dtype, tgt,
+    key = ("cuda_norm_v3", op_name, rows, cols, threads, dtype, tgt,
            execution_backend, pe)
     hit = _cache.get(key)
     if hit is not None:
@@ -275,4 +336,46 @@ def rms_norm(
     )
 
 
-__all__ = ["softmax", "online_softmax", "log_softmax", "layer_norm", "rms_norm"]
+def skip_rms_norm(
+    rows: int,
+    cols: int,
+    threads: int = 1,
+    *,
+    dtype: Any,
+    target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+    eps: Optional[float] = None,
+) -> Any:
+    e = 1e-5 if eps is None else float(eps)
+    return _compile(
+        "skip_rms_norm", rows, cols, threads, dtype,
+        target=target, execution_backend=execution_backend, eps=e,
+    )
+
+
+def skip_layer_norm(
+    rows: int,
+    cols: int,
+    threads: int = 1,
+    *,
+    dtype: Any,
+    target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+    eps: Optional[float] = None,
+) -> Any:
+    e = 1e-5 if eps is None else float(eps)
+    return _compile(
+        "skip_layer_norm", rows, cols, threads, dtype,
+        target=target, execution_backend=execution_backend, eps=e,
+    )
+
+
+__all__ = [
+    "softmax",
+    "online_softmax",
+    "log_softmax",
+    "layer_norm",
+    "rms_norm",
+    "skip_layer_norm",
+    "skip_rms_norm",
+]

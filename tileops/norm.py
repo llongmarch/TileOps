@@ -13,12 +13,15 @@ match the rest of TileOps: ``float32``, ``float16``, ``bfloat16``.
 * :func:`layer_norm` — mean / variance over ``normalized_shape`` (trailing
   dims of ``x``), then ``gamma * x_hat + beta`` (``weight`` / ``bias`` optional).
 * :func:`rms_norm` — RMS scaling over ``normalized_shape``, optional ``weight``.
+* :func:`skip_rms_norm` — fused ``rms_norm(x + residual, …)`` (common pre-norm block).
+* :func:`skip_layer_norm` — fused ``layer_norm(x + residual, …)``.
 
 ::
 
     from tileops import softmax, safe_softmax, online_softmax, layer_norm, rms_norm
     y = softmax(x, dim=-1)
     z = layer_norm(t, (hidden,), weight=w, bias=b)
+    h = skip_rms_norm(x, delta, (hidden,), weight=w_rms)
 """
 
 from __future__ import annotations
@@ -278,6 +281,117 @@ def rms_norm(
             raise ValueError(f"rms_norm: out.shape={out.shape} != input {x.shape}")
         if out.dtype != x.dtype or out.device != x.device:
             raise TypeError("rms_norm: out dtype/device must match input")
+        out.copy_(result)
+        return out
+    return result
+
+
+def skip_rms_norm(
+    x: torch.Tensor,
+    residual: torch.Tensor,
+    normalized_shape: Sequence[int],
+    weight: Optional[torch.Tensor] = None,
+    eps: float = 1e-5,
+    *,
+    out: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """RMS normalization of ``x + residual`` without materializing the sum.
+
+    Matches ``rms_norm(x + residual, …)`` numerically on the fused sum.
+    """
+    if x.shape != residual.shape:
+        raise ValueError(
+            "skip_rms_norm: x and residual must have the same shape "
+            f"(got {tuple(x.shape)} vs {tuple(residual.shape)})"
+        )
+    if residual.dtype != x.dtype or residual.device != x.device:
+        raise TypeError("skip_rms_norm: residual dtype/device must match x")
+    x_2d, m, n, orig_shape = _trailing_normalized(x, normalized_shape)
+    r_2d = residual.contiguous().reshape(m, n)
+    w, _ = _default_affine(
+        n, x.device, x.dtype,
+        weight=weight, bias=None, need_bias=False,
+    )
+    w, _ = _prepare_affine("skip_rms_norm", w, None, n, normalized_shape, x)
+    tl_dtype = torch_to_tl_dtype(x.dtype)
+    tgt = default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = default_execution_backend(tgt, dev)
+    kernel = dispatch_compile_norm(
+        op_name="skip_rms_norm", target=tgt, rows=m, cols=n,
+        threads=_NORM_THREADS, dtype=tl_dtype,
+        execution_backend=eb, eps=eps,
+    )
+    y_2d = invoke_nary_kernel(
+        kernel, x_2d, r_2d, w, out=None,
+        tilelang_target=tgt, execution_backend=eb,
+    )
+    result = y_2d.view(orig_shape)
+    if out is not None:
+        if out.shape != x.shape:
+            raise ValueError(
+                f"skip_rms_norm: out.shape={tuple(out.shape)} != input "
+                f"{tuple(x.shape)}"
+            )
+        if out.dtype != x.dtype or out.device != x.device:
+            raise TypeError(
+                "skip_rms_norm: out dtype/device must match input",
+            )
+        out.copy_(result)
+        return out
+    return result
+
+
+def skip_layer_norm(
+    x: torch.Tensor,
+    residual: torch.Tensor,
+    normalized_shape: Sequence[int],
+    weight: Optional[torch.Tensor] = None,
+    bias: Optional[torch.Tensor] = None,
+    eps: float = 1e-5,
+    *,
+    out: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Layer normalization of ``x + residual`` (fused sum)."""
+    if x.shape != residual.shape:
+        raise ValueError(
+            "skip_layer_norm: x and residual must have the same shape "
+            f"(got {tuple(x.shape)} vs {tuple(residual.shape)})"
+        )
+    if residual.dtype != x.dtype or residual.device != x.device:
+        raise TypeError("skip_layer_norm: residual dtype/device must match x")
+    x_2d, m, n, orig_shape = _trailing_normalized(x, normalized_shape)
+    r_2d = residual.contiguous().reshape(m, n)
+    w, b = _default_affine(
+        n, x.device, x.dtype,
+        weight=weight, bias=bias, need_bias=True,
+    )
+    w, b = _prepare_affine("skip_layer_norm", w, b, n, normalized_shape, x)
+    tl_dtype = torch_to_tl_dtype(x.dtype)
+    tgt = default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = default_execution_backend(tgt, dev)
+    kernel = dispatch_compile_norm(
+        op_name="skip_layer_norm", target=tgt, rows=m, cols=n,
+        threads=_NORM_THREADS, dtype=tl_dtype,
+        execution_backend=eb, eps=eps,
+    )
+    assert b is not None
+    y_2d = invoke_nary_kernel(
+        kernel, x_2d, r_2d, w, b, out=None,
+        tilelang_target=tgt, execution_backend=eb,
+    )
+    result = y_2d.view(orig_shape)
+    if out is not None:
+        if out.shape != x.shape:
+            raise ValueError(
+                f"skip_layer_norm: out.shape={tuple(out.shape)} != input "
+                f"{tuple(x.shape)}"
+            )
+        if out.dtype != x.dtype or out.device != x.device:
+            raise TypeError(
+                "skip_layer_norm: out dtype/device must match input",
+            )
         out.copy_(result)
         return out
     return result

@@ -1,11 +1,15 @@
-"""Fused activation–multiply ops (SiLU / GELU × gate).
+"""Fused LLM helpers: activation×gate **and** residual + norm pairs.
 
-Each function takes two same-shaped tensors *a*, *b* and returns
-``activation(a) * b`` in one kernel, matching common SwiGLU / GeGLU patterns.
+Single-kernel gated activations::
 
-* :func:`silu_and_mul` — ``silu(a) * b`` (same SiLU as :func:`~tileops.silu`).
-* :func:`gelu_and_mul` — ``gelu(a, approximate='tanh') * b`` (same GELU as
-  :func:`~tileops.gelu`).
+* :func:`silu_and_mul` — ``silu(a) * b``
+* :func:`gelu_and_mul` — ``gelu(a, tanh approx) * b``
+
+Residual-connected normalisation (delegates to :mod:`tileops.norm`; same
+kernels as ``skip_*`` in the norm backends)::
+
+* :func:`skip_rms_norm` — ``rms_norm(x + residual, …)``
+* :func:`skip_layer_norm` — ``layer_norm(x + residual, …)``
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from typing import Optional
 import torch
 
 from tileops._infra import dispatch_compile
+from tileops.norm import skip_layer_norm, skip_rms_norm
 from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,
@@ -109,4 +114,9 @@ def gelu_and_mul(
     return _run_fused("gelu_and_mul", a, b, out=out)
 
 
-__all__ = ["silu_and_mul", "gelu_and_mul"]
+__all__ = [
+    "gelu_and_mul",
+    "silu_and_mul",
+    "skip_layer_norm",
+    "skip_rms_norm",
+]
