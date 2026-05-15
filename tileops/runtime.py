@@ -54,6 +54,7 @@ __all__ = [
     "invoke_row_reduce_kernel",
     "invoke_row_index_reduce_kernel",
     "invoke_nary_kernel",
+    "invoke_quant_kernel",
     "invoke_unary_kernel",
     "make_kernel_runner",
     "make_unary_kernel_runner",
@@ -397,6 +398,115 @@ def invoke_nary_kernel(
         tilelang_target=tilelang_target,
         execution_backend=execution_backend,
     )
+
+
+def invoke_quant_kernel(
+    kernel: Any,
+    x: torch.Tensor,
+    scale: torch.Tensor,
+    *,
+    out: torch.Tensor,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Run a compiled quantize / dequantize kernel.
+
+    *x* and *out* share shape; *scale* is ``float32`` (length 1 or channel
+    count).  Buffers are flattened row-major before the call.
+    """
+    if x.shape != out.shape:
+        raise ValueError(
+            f"invoke_quant_kernel: x.shape={tuple(x.shape)} != "
+            f"out.shape={tuple(out.shape)}"
+        )
+    if x.device != out.device or scale.device != x.device:
+        raise TypeError("invoke_quant_kernel: all tensors must share device")
+    if scale.dtype != torch.float32:
+        raise TypeError("invoke_quant_kernel: scale must be float32")
+
+    xf = x.contiguous().view(-1)
+    sf = scale.contiguous().view(-1)
+    of = out.contiguous().view(-1)
+
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(xf, sf, of)
+        if of.data_ptr() != out.data_ptr():
+            out.copy_(of)
+        return out
+
+    ret = kernel(xf, sf)
+    if ret is not None:
+        of.copy_(ret)
+    else:
+        kernel(xf, sf, of)
+    if of.data_ptr() != out.data_ptr():
+        out.copy_(of)
+    return out
+
+
+def invoke_per_token_quant_int8_kernel(
+    kernel: Any,
+    x: torch.Tensor,
+    *,
+    out_work: torch.Tensor,
+    out_scale: torch.Tensor,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Run per-row dynamic INT8 quant: ``scale = absmax/127``, ``q = round(x/scale)``.
+
+    *x* is 2-D ``(rows, cols)``; *out_work* is float32 clamped intermediates;
+    *out_scale* is 1-D ``(rows,)`` dequant scales.
+    """
+    if x.ndim != 2:
+        raise ValueError(
+            f"invoke_per_token_quant_int8_kernel: x must be 2-D, got {x.ndim}D"
+        )
+    rows, cols = x.shape
+    if out_work.shape != (rows, cols) or out_work.dtype != torch.float32:
+        raise ValueError(
+            f"invoke_per_token_quant_int8_kernel: out_work must be float32 "
+            f"({rows}, {cols})"
+        )
+    if out_scale.shape != (rows,) or out_scale.dtype != torch.float32:
+        raise ValueError(
+            f"invoke_per_token_quant_int8_kernel: out_scale must be float32 "
+            f"({rows},)"
+        )
+    if x.device != out_work.device or out_scale.device != x.device:
+        raise TypeError(
+            "invoke_per_token_quant_int8_kernel: all tensors must share device"
+        )
+
+    xf = x.contiguous().view(-1)
+    yf = out_work.contiguous().view(-1)
+    sf = out_scale.contiguous().view(-1)
+
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(xf, yf, sf)
+    else:
+        ret = kernel(xf, yf)
+        if ret is not None:
+            yf.copy_(ret)
+        else:
+            kernel(xf, yf, sf)
+    return out_work, out_scale
 
 
 def invoke_gemm_kernel(

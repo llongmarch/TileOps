@@ -7,7 +7,8 @@
 * :func:`make_backend_op` — generates a backend compile function from a
   cached compiler.
 
-**Facade helpers** (used by ``binary.py``, ``activation.py``, ``fused.py``):
+**Facade helpers** (used by ``binary.py``, ``activation.py``, ``fused.py``,
+``quant``):
 
 * :data:`BACKEND_PACKAGES` — target-kind → package mapping.
 * :func:`dispatch_compile` — resolve backend, import module, compile op.
@@ -327,4 +328,101 @@ def dispatch_compile_reduce(
         dtype=dtype,
         target=target,
         execution_backend=execution_backend,
+    )
+
+
+_QUANT_POINTWISE_OPS = frozenset({
+    "quantize_per_tensor",
+    "dequantize_per_tensor",
+})
+_QUANT_CHANNEL_OPS = frozenset({
+    "quantize_per_channel",
+    "dequantize_per_channel",
+})
+_QUANT_ROW_OPS = frozenset({
+    "per_token_quant_int8",
+})
+
+
+def dispatch_compile_quant(
+    *,
+    op_name: str,
+    target: str,
+    shape: Sequence[int],
+    block_size: int,
+    threads: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    rows: Optional[int] = None,
+    cols: Optional[int] = None,
+    eps: float = 1e-10,
+    backend_packages: dict[str, str] = BACKEND_PACKAGES,
+) -> Any:
+    """Compile a quantize / dequantize kernel from ``tileops.*.quant``.
+
+    For per-tensor ops, pass *shape* only.  For per-channel ops, pass *rows*
+    and *cols* (logical ``(rows, cols)`` view with channel axis last).
+    For per-row dynamic quant, pass *rows* and *cols* with
+    ``op_name="per_token_quant_int8"``.
+    """
+    kind = target_kind(target)
+    pkg = backend_packages.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No quant backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(backend_packages))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.quant")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.quant for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.quant has no {op_name}() for {target!r}"
+        )
+
+    if op_name in _QUANT_POINTWISE_OPS:
+        return fn(
+            tuple(shape),
+            block_size,
+            threads,
+            dtype=dtype,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    if op_name in _QUANT_CHANNEL_OPS:
+        if rows is None or cols is None:
+            raise ValueError(
+                f"dispatch_compile_quant: {op_name} requires rows= and cols="
+            )
+        return fn(
+            rows,
+            cols,
+            block_size,
+            threads,
+            dtype=dtype,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    if op_name in _QUANT_ROW_OPS:
+        if rows is None or cols is None:
+            raise ValueError(
+                f"dispatch_compile_quant: {op_name} requires rows= and cols="
+            )
+        return fn(
+            rows,
+            cols,
+            threads,
+            dtype=dtype,
+            eps=eps,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    raise ValueError(
+        f"dispatch_compile_quant: unknown op_name {op_name!r}; "
+        f"expected one of {sorted(_QUANT_POINTWISE_OPS | _QUANT_CHANNEL_OPS | _QUANT_ROW_OPS)}"
     )

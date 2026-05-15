@@ -11,7 +11,8 @@ Usage is as simple as PyTorch::
 All public symbols are listed in :data:`__all__`.  Kernel IR lives in
 backend subpackages (``tileops.cuda.binary``, ``tileops.metal.norm``, …);
 facades ``tileops.binary``, ``tileops.activation``, ``tileops.fused``,
-``tileops.norm``, ``tileops.blas``, and ``tileops.reduction`` provide the
+``tileops.norm``, ``tileops.blas``, ``tileops.reduction``, and ``tileops.quant``
+provide the
 end-user API.  Runtime helpers live in ``tileops.runtime``.
 """
 
@@ -115,6 +116,20 @@ from tileops.norm import (
     skip_rms_norm,
 )
 
+# ── Re-exports: quant (INT8 symmetric quantize / dequantize) ─────────────
+from tileops.quant import (
+    apply_w8a8_block_int8_linear,
+    block_dequant,
+    dequantize_per_channel,
+    dequantize_per_tensor,
+    input_to_int8,
+    per_token_group_quant_int8,
+    per_token_quant_int8,
+    quantize_per_channel,
+    quantize_per_tensor,
+    w8a8_block_int8_matmul,
+)
+
 __all__ = [
     # runtime / host helpers
     "bench_ms",
@@ -194,4 +209,15 @@ __all__ = [
     "rms_norm",
     "skip_layer_norm",
     "skip_rms_norm",
+    # quant
+    "quantize_per_tensor",
+    "dequantize_per_tensor",
+    "quantize_per_channel",
+    "dequantize_per_channel",
+    "input_to_int8",
+    "per_token_quant_int8",
+    "per_token_group_quant_int8",
+    "block_dequant",
+    "w8a8_block_int8_matmul",
+    "apply_w8a8_block_int8_linear",
 ]
