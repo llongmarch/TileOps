@@ -222,8 +222,10 @@ def dispatch_compile_blas(
 ) -> Any:
     """Compile a BLAS-style kernel from ``tileops.*.blas``.
 
-    *op_name* is ``"gemm"`` or ``"gemv"``.  For ``gemm``, pass the inner
-    dimension *k* and the trailing matrix width *n* (``C`` is *m* × *n*).
+    *op_name* is ``"gemm"`` or ``"gemv"``.  Facade wrappers such as ``mm``,
+    ``outer``, ``bmm``, ``addmm`` reuse ``gemm`` with the shapes described in
+    :mod:`tileops.blas`.  For ``gemm``, pass the inner dimension *k* and the
+    trailing matrix width *n* (``C`` is *m* × *n*).
     For ``gemv``, *n* must be ``None`` — only *m* and *k* are used.
     """
     kind = target_kind(target)

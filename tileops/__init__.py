@@ -74,8 +74,17 @@ from tileops.activation import (
 # ── Re-exports: fused (silu_and_mul, gelu_and_mul) ───────────────────────
 from tileops.fused import gelu_and_mul, silu_and_mul
 
-# ── Re-exports: BLAS (gemm, gemv) ────────────────────────────────────────
-from tileops.blas import gemm, gemv
+# ── Re-exports: BLAS (gemm, mm, bmm, …) ───────────────────────────────────
+from tileops.blas import (
+    addmm,
+    baddbmm,
+    bmm,
+    gemm,
+    gemv,
+    mm,
+    mv,
+    outer,
+)
 
 # ── Re-exports: reductions (sum / mean / … along dim) ─────────────────────
 from tileops.reduction import (
@@ -152,8 +161,14 @@ __all__ = [
     "silu_and_mul",
     "gelu_and_mul",
     # blas
+    "addmm",
+    "baddbmm",
+    "bmm",
     "gemm",
     "gemv",
+    "mm",
+    "mv",
+    "outer",
     # reduction
     "reduce_sum",
     "reduce_mean",
