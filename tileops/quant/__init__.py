@@ -249,6 +249,16 @@ def dequantize_per_channel(
     return result
 
 
+from tileops.quant.awq import (
+    AWQ_TRITON_SUPPORTED_GROUP_SIZES,
+    REVERSE_AWQ_ORDER,
+    awq_dequantize,
+    awq_dequantize_triton,
+    awq_gemm,
+    awq_gemm_triton,
+    pack_awq_int4,
+    unpack_awq_int4,
+)
 from tileops.quant.fp8 import (
     apply_w8a8_block_fp8_linear,
     block_dequant as block_dequant_fp8,
@@ -270,8 +280,14 @@ from tileops.quant.int8 import (
 )
 
 __all__ = [
+    "AWQ_TRITON_SUPPORTED_GROUP_SIZES",
+    "REVERSE_AWQ_ORDER",
     "apply_w8a8_block_fp8_linear",
     "apply_w8a8_block_int8_linear",
+    "awq_dequantize",
+    "awq_dequantize_triton",
+    "awq_gemm",
+    "awq_gemm_triton",
     "block_dequant",
     "block_dequant_fp8",
     "dequantize_per_channel",
@@ -289,4 +305,6 @@ __all__ = [
     "w8a8_block_fp8_matmul",
     "w8a8_block_int8_matmul",
     "w8a8_triton_block_scaled_mm",
+    "pack_awq_int4",
+    "unpack_awq_int4",
 ]
