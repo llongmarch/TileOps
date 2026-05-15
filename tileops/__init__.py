@@ -118,16 +118,25 @@ from tileops.norm import (
 
 # ── Re-exports: quant (INT8 symmetric quantize / dequantize) ─────────────
 from tileops.quant import (
+    apply_w8a8_block_fp8_linear,
     apply_w8a8_block_int8_linear,
     block_dequant,
+    block_dequant_fp8,
     dequantize_per_channel,
     dequantize_per_tensor,
+    default_fp8_dtype,
+    get_fp8_min_max,
+    input_to_float8,
     input_to_int8,
+    is_fp8,
+    per_token_group_quant_fp8,
     per_token_group_quant_int8,
     per_token_quant_int8,
     quantize_per_channel,
     quantize_per_tensor,
+    w8a8_block_fp8_matmul,
     w8a8_block_int8_matmul,
+    w8a8_triton_block_scaled_mm,
 )
 
 __all__ = [
@@ -215,9 +224,18 @@ __all__ = [
     "quantize_per_channel",
     "dequantize_per_channel",
     "input_to_int8",
+    "input_to_float8",
+    "is_fp8",
+    "default_fp8_dtype",
+    "get_fp8_min_max",
     "per_token_quant_int8",
     "per_token_group_quant_int8",
+    "per_token_group_quant_fp8",
     "block_dequant",
+    "block_dequant_fp8",
     "w8a8_block_int8_matmul",
+    "w8a8_block_fp8_matmul",
+    "w8a8_triton_block_scaled_mm",
     "apply_w8a8_block_int8_linear",
+    "apply_w8a8_block_fp8_linear",
 ]
