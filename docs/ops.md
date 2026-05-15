@@ -21,6 +21,17 @@
 
 ---
 
+## Convolution（卷积）
+
+| 算子 | 说明 |
+|------|------|
+| `conv1d` | 1-D 卷积（batch, channel, length） |
+| `conv2d` | 2-D 卷积（batch, channel, height, width） |
+
+支持 groups 分组卷积；bias 可选（默认全零）。
+
+---
+
 ## Binary（逐元素二元）
 
 **算术**：`add`, `sub`, `mul`, `div`, `pow`, `fmod`, `remainder`, `floor_div`
@@ -168,6 +179,7 @@
 | `tileops.norm` | `tileops.cuda.norm`, `tileops.metal.norm` |
 | `tileops.fused` | `tileops.cuda.fused`, `tileops.metal.fused` |
 | `tileops.quant` | `tileops.cuda.quant`, `tileops.metal.quant` |
+| `tileops.conv` | `tileops.cuda.conv`, `tileops.metal.conv` |
 
 ---
 

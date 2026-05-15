@@ -440,3 +440,76 @@ def dispatch_compile_quant(
         f"dispatch_compile_quant: unknown op_name {op_name!r}; "
         f"expected one of {sorted(_QUANT_POINTWISE_OPS | _QUANT_CHANNEL_OPS | _QUANT_ROW_OPS)}"
     )
+
+
+def dispatch_compile_conv(
+    *,
+    op_name: str,
+    target: str,
+    N: int,
+    C_out: int,
+    C_in: int,
+    L: int,
+    kernel_size: int,
+    stride: int,
+    groups: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    H: Optional[int] = None,
+    W: Optional[int] = None,
+    kernel_h: Optional[int] = None,
+    kernel_w: Optional[int] = None,
+    stride_h: Optional[int] = None,
+    stride_w: Optional[int] = None,
+    backend_packages: dict[str, str] = BACKEND_PACKAGES,
+) -> Any:
+    """Compile a convolution kernel from ``tileops.*.conv``.
+
+    For ``conv1d``, pass *L*, *kernel_size*, *stride* (H/W/*_h/*_w are None).
+    For ``conv2d``, pass *H*, *W*, *kernel_h*, *kernel_w*, *stride_h*, *stride_w*.
+    """
+    kind = target_kind(target)
+    pkg = backend_packages.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No conv backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(backend_packages))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.conv")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.conv for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.conv has no {op_name}() for {target!r}"
+        )
+
+    if op_name == "conv1d":
+        return fn(
+            N, C_out, C_in, L,
+            kernel_size, stride, groups,
+            dtype=dtype,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    if op_name == "conv2d":
+        if any(v is None for v in (H, W, kernel_h, kernel_w, stride_h, stride_w)):
+            raise ValueError(
+                "dispatch_compile_conv: conv2d requires H=, W=, kernel_h=, "
+                "kernel_w=, stride_h=, stride_w="
+            )
+        return fn(
+            N, C_out, C_in, H, W,
+            kernel_h, kernel_w, stride_h, stride_w, groups,
+            dtype=dtype,
+            target=target,
+            execution_backend=execution_backend,
+        )
+    raise ValueError(
+        f"dispatch_compile_conv: unknown op_name {op_name!r}; "
+        f"expected 'conv1d' or 'conv2d'"
+    )

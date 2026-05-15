@@ -48,6 +48,7 @@ __all__ = [
     "default_tilelang_target",
     "default_torch_device",
     "heuristic_tilelang_target",
+    "invoke_conv_kernel",
     "invoke_kernel",
     "invoke_gemm_kernel",
     "invoke_gemv_kernel",
@@ -819,6 +820,76 @@ def invoke_unary_kernel(
     return _invoke_impl(kernel, x, out=out,
                         tilelang_target=tilelang_target,
                         execution_backend=execution_backend)
+
+
+def invoke_conv_kernel(
+    kernel: Any,
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    bias: torch.Tensor,
+    *,
+    out: Optional[torch.Tensor] = None,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Run a compiled convolution kernel: ``out = conv(input, weight, bias)``.
+
+    *input*, *weight* keep their logical shapes; *bias* is 1-D ``(C_out,)``.
+    All tensors are contiguous on-device.  Metal + ``execution_backend="torch"``
+    uses ``kernel(input, weight, bias, out)``; CUDA follows the same convention.
+    """
+    if input.device != weight.device or bias.device != input.device:
+        raise TypeError("invoke_conv_kernel: all tensors must share device")
+    if out is not None:
+        if out.device != input.device:
+            raise TypeError("invoke_conv_kernel: out device must match input")
+        if out.dtype != input.dtype:
+            raise TypeError("invoke_conv_kernel: out dtype must match input")
+
+    inp_c = input.contiguous()
+    w_c = weight.contiguous()
+    b_c = bias.contiguous()
+    if out is None:
+        out_c = torch.empty(inp_c.shape[0], w_c.shape[0], *inp_c.shape[2:],
+                            dtype=input.dtype, device=input.device)
+        # For conv2d with (N, C_out, H_out, W_out); for conv1d (N, C_out, L_out)
+        # Infer output spatial dims: input dims - kernel dims + 1 after stride.
+        # Actually let's handle this by using the kernel's own output allocation.
+        # Simpler: just use `input.new_empty(...)` with the expected output shape
+        # from PyTorch convention.
+        # For conv1d: output = (N, C_out, L_out)  where L_out = (L - K) // stride + 1
+        # For conv2d: output = (N, C_out, H_out, W_out)
+        # We don't know the exact output shape at this level; it's baked into
+        # the compiled kernel. Let the caller always provide out.
+        raise ValueError(
+            "invoke_conv_kernel: out= is required (output shape depends on "
+            "kernel hyper-parameters baked into the compiled kernel)"
+        )
+    else:
+        out_c = out.contiguous()
+
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(inp_c, w_c, b_c, out_c)
+        if out_c.data_ptr() != out.data_ptr():
+            out.copy_(out_c)
+        return out
+
+    ret = kernel(inp_c, w_c, b_c)
+    if ret is not None:
+        out_c.copy_(ret)
+    else:
+        kernel(inp_c, w_c, b_c, out_c)
+    if out_c.data_ptr() != out.data_ptr():
+        out.copy_(out_c)
+    return out
 
 
 # ── Benchmark runners (unified) ─────────────────────────────────────────

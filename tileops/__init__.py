@@ -24,6 +24,7 @@ from tileops.runtime import (
     default_tilelang_target,
     default_torch_device,
     heuristic_tilelang_target,
+    invoke_conv_kernel,
     invoke_gemm_kernel,
     invoke_gemv_kernel,
     invoke_kernel,
@@ -120,6 +121,12 @@ from tileops.norm import (
     skip_rms_norm,
 )
 
+# ── Re-exports: conv ────────────────────────────────────────────────────────
+from tileops.conv import (
+    conv1d,
+    conv2d,
+)
+
 # ── Re-exports: quant (symmetric INT8 + vLLM-style helpers) ───────────────
 from tileops.quant import (
     dequantize_per_channel,
@@ -167,6 +174,7 @@ __all__ = [
     "heuristic_tilelang_target",
     "invoke_gemm_kernel",
     "invoke_gemv_kernel",
+    "invoke_conv_kernel",
     "invoke_kernel",
     "invoke_row_index_reduce_kernel",
     "invoke_row_reduce_kernel",
@@ -238,6 +246,9 @@ __all__ = [
     "rms_norm",
     "skip_layer_norm",
     "skip_rms_norm",
+    # conv
+    "conv1d",
+    "conv2d",
     # quant
     "quantize_per_tensor",
     "dequantize_per_tensor",
