@@ -1,5 +1,9 @@
 """Symmetric INT8 quantize / dequantize (per-tensor and per-channel).
 
+TileLang kernels live in ``tileops.cuda.quant`` and ``tileops.metal.quant``.
+vLLM-style helpers are in :mod:`tileops.quant_int8`, :mod:`tileops.quant_fp8`,
+and :mod:`tileops.quant_awq`.
+
 Mapping (no zero-point, ``scale > 0``)::
 
     q = clamp(round(x / scale), -128, 127)
@@ -9,12 +13,6 @@ Mapping (no zero-point, ``scale > 0``)::
   *scale* for the whole tensor.
 * :func:`quantize_per_channel` / :func:`dequantize_per_channel` — one scale
   per index along *dim* (channel axis merged last, like reductions).
-
-Quantize kernels write clamped float32 intermediates; the facade casts to
-``int8`` (avoids unreliable direct ``int8`` stores on some Metal paths).
-
-Input activations: ``float32``, ``float16``, ``bfloat16``.  *scale* is always
-``float32``.  Quantized values are ``torch.int8``.
 """
 
 from __future__ import annotations
@@ -33,6 +31,7 @@ from tileops.runtime import (
     suggest_tile_config,
     torch_to_tl_dtype,
 )
+
 
 def _validate_scale_tensor(
     scale: torch.Tensor,
@@ -249,62 +248,9 @@ def dequantize_per_channel(
     return result
 
 
-from tileops.quant.awq import (
-    AWQ_TRITON_SUPPORTED_GROUP_SIZES,
-    REVERSE_AWQ_ORDER,
-    awq_dequantize,
-    awq_dequantize_triton,
-    awq_gemm,
-    awq_gemm_triton,
-    pack_awq_int4,
-    unpack_awq_int4,
-)
-from tileops.quant.fp8 import (
-    apply_w8a8_block_fp8_linear,
-    block_dequant as block_dequant_fp8,
-    default_fp8_dtype,
-    get_fp8_min_max,
-    input_to_float8,
-    is_fp8,
-    per_token_group_quant_fp8,
-    w8a8_block_fp8_matmul,
-    w8a8_triton_block_scaled_mm,
-)
-from tileops.quant.int8 import (
-    apply_w8a8_block_int8_linear,
-    block_dequant,
-    input_to_int8,
-    per_token_group_quant_int8,
-    per_token_quant_int8,
-    w8a8_block_int8_matmul,
-)
-
 __all__ = [
-    "AWQ_TRITON_SUPPORTED_GROUP_SIZES",
-    "REVERSE_AWQ_ORDER",
-    "apply_w8a8_block_fp8_linear",
-    "apply_w8a8_block_int8_linear",
-    "awq_dequantize",
-    "awq_dequantize_triton",
-    "awq_gemm",
-    "awq_gemm_triton",
-    "block_dequant",
-    "block_dequant_fp8",
     "dequantize_per_channel",
     "dequantize_per_tensor",
-    "default_fp8_dtype",
-    "get_fp8_min_max",
-    "input_to_float8",
-    "input_to_int8",
-    "is_fp8",
-    "per_token_group_quant_fp8",
-    "per_token_group_quant_int8",
-    "per_token_quant_int8",
     "quantize_per_channel",
     "quantize_per_tensor",
-    "w8a8_block_fp8_matmul",
-    "w8a8_block_int8_matmul",
-    "w8a8_triton_block_scaled_mm",
-    "pack_awq_int4",
-    "unpack_awq_int4",
 ]

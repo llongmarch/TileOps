@@ -1,4 +1,4 @@
-"""Tests for ``tileops.quant`` (per-tensor / per-channel quantize & dequantize)."""
+"""Tests for ``tileops.quant`` symmetric quantize / dequantize."""
 
 from __future__ import annotations
 

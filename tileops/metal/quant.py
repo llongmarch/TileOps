@@ -1,4 +1,4 @@
-"""Metal symmetric quantize / dequantize (see :mod:`tileops.cuda.quant`)."""
+"""Metal TileLang kernels for :mod:`tileops.quant` (compile-only backend)."""
 
 import math
 from typing import Any, Optional

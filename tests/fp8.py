@@ -1,4 +1,4 @@
-"""Tests for vLLM-compatible ``tileops.quant.fp8``."""
+"""Tests for vLLM-compatible ``tileops.quant_fp8``."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import math
 import pytest
 import torch
 
-from tileops.quant import fp8 as fp8_mod
+import tileops.quant_fp8 as fp8_mod
 
 pytestmark = pytest.mark.skipif(
     not fp8_mod._FP8_DTYPES,

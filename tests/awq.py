@@ -1,10 +1,10 @@
-"""Tests for vLLM-compatible ``tileops.quant.awq``."""
+"""Tests for vLLM-compatible ``tileops.quant_awq``."""
 
 from __future__ import annotations
 
 import torch
 
-from tileops.quant import awq as awq_mod
+import tileops.quant_awq as awq_mod
 
 
 def _ref_dequant(qweight, scales, zeros):

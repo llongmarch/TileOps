@@ -11,9 +11,9 @@ Usage is as simple as PyTorch::
 All public symbols are listed in :data:`__all__`.  Kernel IR lives in
 backend subpackages (``tileops.cuda.binary``, ``tileops.metal.norm``, …);
 facades ``tileops.binary``, ``tileops.activation``, ``tileops.fused``,
-``tileops.norm``, ``tileops.blas``, ``tileops.reduction``, and ``tileops.quant``
-provide the
-end-user API.  Runtime helpers live in ``tileops.runtime``.
+``tileops.norm``, ``tileops.blas``, ``tileops.reduction``, ``tileops.quant``, …
+provide the end-user API.  TileLang backends are ``tileops.cuda.*`` /
+``tileops.metal.*``.  Runtime helpers live in ``tileops.runtime``.
 """
 
 # ── Re-exports: runtime ─────────────────────────────────────────────────
@@ -116,35 +116,41 @@ from tileops.norm import (
     skip_rms_norm,
 )
 
-# ── Re-exports: quant (INT8 symmetric quantize / dequantize) ─────────────
+# ── Re-exports: quant (symmetric INT8 + vLLM-style helpers) ───────────────
 from tileops.quant import (
+    dequantize_per_channel,
+    dequantize_per_tensor,
+    quantize_per_channel,
+    quantize_per_tensor,
+)
+from tileops.quant_awq import (
     AWQ_TRITON_SUPPORTED_GROUP_SIZES,
     REVERSE_AWQ_ORDER,
-    apply_w8a8_block_fp8_linear,
-    apply_w8a8_block_int8_linear,
     awq_dequantize,
     awq_dequantize_triton,
     awq_gemm,
     awq_gemm_triton,
-    block_dequant,
-    block_dequant_fp8,
-    dequantize_per_channel,
-    dequantize_per_tensor,
+    pack_awq_int4,
+    unpack_awq_int4,
+)
+from tileops.quant_fp8 import (
+    apply_w8a8_block_fp8_linear,
+    block_dequant as block_dequant_fp8,
     default_fp8_dtype,
     get_fp8_min_max,
     input_to_float8,
-    input_to_int8,
     is_fp8,
     per_token_group_quant_fp8,
+    w8a8_block_fp8_matmul,
+    w8a8_triton_block_scaled_mm,
+)
+from tileops.quant_int8 import (
+    apply_w8a8_block_int8_linear,
+    block_dequant,
+    input_to_int8,
     per_token_group_quant_int8,
     per_token_quant_int8,
-    quantize_per_channel,
-    quantize_per_tensor,
-    w8a8_block_fp8_matmul,
     w8a8_block_int8_matmul,
-    w8a8_triton_block_scaled_mm,
-    pack_awq_int4,
-    unpack_awq_int4,
 )
 
 __all__ = [

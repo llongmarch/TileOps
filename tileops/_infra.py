@@ -358,12 +358,12 @@ def dispatch_compile_quant(
     eps: float = 1e-10,
     backend_packages: dict[str, str] = BACKEND_PACKAGES,
 ) -> Any:
-    """Compile a quantize / dequantize kernel from ``tileops.*.quant``.
+    """Compile a kernel from backend ``tileops.<cuda|metal>.quant``.
 
-    For per-tensor ops, pass *shape* only.  For per-channel ops, pass *rows*
-    and *cols* (logical ``(rows, cols)`` view with channel axis last).
-    For per-row dynamic quant, pass *rows* and *cols* with
-    ``op_name="per_token_quant_int8"``.
+    User-facing API is :mod:`tileops.quant` (and :mod:`tileops.quant_int8` for
+    dynamic per-token ops).  For per-tensor ops, pass *shape* only.  For
+    per-channel ops, pass *rows* and *cols*.  For per-row dynamic quant, use
+    ``op_name="per_token_quant_int8"`` with *rows* and *cols*.
     """
     kind = target_kind(target)
     pkg = backend_packages.get(kind)

@@ -1,4 +1,4 @@
-"""Tests for vLLM-compatible ``tileops.quant.int8``."""
+"""Tests for vLLM-compatible ``tileops.quant_int8``."""
 
 from __future__ import annotations
 
@@ -145,7 +145,7 @@ def test_w8a8_block_int8_matmul(platform):
             ].float()
             s_b[j, i] = blk.abs().max().clamp(min=1e-10) / 127.0
 
-    from tileops.quant.int8 import _dequant_per_token_group_lastdim
+    from tileops.quant_int8 import _dequant_per_token_group_lastdim
 
     out = w8a8_block_int8_matmul(q_a, q_b, s_a, s_b, block_size, output_dtype=torch.float32)
     a_f = _dequant_per_token_group_lastdim(q_a, s_a, block_k)

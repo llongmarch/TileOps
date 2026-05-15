@@ -1,4 +1,4 @@
-"""CUDA / HIP symmetric quantize / dequantize (INT8, per-tensor and per-channel).
+"""CUDA / HIP TileLang kernels for :mod:`tileops.quant` (compile-only backend).
 
 Symmetric mapping (no zero-point)::
 
