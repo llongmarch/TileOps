@@ -62,6 +62,7 @@
 | `reduce_all` | 全真 |
 | `reduce_any` | 存在真 |
 | `reduce_cumsum` | 前缀和 |
+| `topk` | Top-*k*（返回 values + indices） |
 
 ---
 

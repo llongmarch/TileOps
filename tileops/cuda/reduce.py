@@ -125,6 +125,59 @@ def _argmax_prim(m: int, n: int, _: int, dtype: Any, __unused: float) -> Any:
     return main
 
 
+def _make_topk_prim(largest: bool):
+    def _topk_prim(m: int, n: int, k: int, _: int, dtype: Any, __unused: float) -> Any:
+        @T.prim_func
+        def main(
+            arg0_X: T.Tensor((m * n,), dtype),
+            arg1_Values: T.Tensor((m * k,), dtype),
+            arg2_Index: T.Tensor((m * k,), T.int64),
+        ):
+            with T.Kernel(m, threads=1) as (row,):
+                base = row * n
+                val = T.alloc_local((k,), T.float32)
+                idx = T.alloc_local((k,), T.int64)
+                for i in range(k):
+                    val[i] = arg0_X[base + i]
+                    idx[i] = i
+                for i in range(k):
+                    for t in range(i + 1, k):
+                        if largest:
+                            if val[t] > val[i]:
+                                val[i], val[t] = val[t], val[i]
+                                idx[i], idx[t] = idx[t], idx[i]
+                        else:
+                            if val[t] < val[i]:
+                                val[i], val[t] = val[t], val[i]
+                                idx[i], idx[t] = idx[t], idx[i]
+                for j in range(k, n):
+                    v = arg0_X[base + j]
+                    for t in range(k):
+                        if largest:
+                            if v > val[t]:
+                                for s in range(k - 1, t, -1):
+                                    val[s] = val[s - 1]
+                                    idx[s] = idx[s - 1]
+                                val[t] = v
+                                idx[t] = j
+                                break
+                        else:
+                            if v < val[t]:
+                                for s in range(k - 1, t, -1):
+                                    val[s] = val[s - 1]
+                                    idx[s] = idx[s - 1]
+                                val[t] = v
+                                idx[t] = j
+                                break
+                for i in range(k):
+                    arg1_Values[row * k + i] = val[i]
+                    arg2_Index[row * k + i] = idx[i]
+
+        return main
+
+    return _topk_prim
+
+
 def _argmin_prim(m: int, n: int, _: int, dtype: Any, __unused: float) -> Any:
     @T.prim_func
     def main(
@@ -217,6 +270,36 @@ _REDUCE_PRIM: dict[str, Any] = {
 }
 
 _cache: dict[tuple, Any] = {}
+_topk_cache: dict[tuple, Any] = {}
+
+
+def _compile_topk(
+    rows: int,
+    cols: int,
+    k: int,
+    threads: int,
+    dtype: Any,
+    *,
+    largest: bool,
+    target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> Any:
+    tgt = target if target is not None else default_tilelang_target()
+    key = (
+        "cuda_reduce_topk_v4", rows, cols, k, threads, dtype, largest, tgt,
+        execution_backend,
+    )
+    hit = _topk_cache.get(key)
+    if hit is not None:
+        return hit
+    kernel = compile_prim(
+        _make_topk_prim(largest)(rows, cols, k, threads, dtype, 0.0),
+        target=tgt,
+        execution_backend=execution_backend,
+        out_idx=[1, 2],
+    )
+    _topk_cache[key] = kernel
+    return kernel
 
 
 def _compile(
@@ -349,6 +432,24 @@ def row_argmin(
     )
 
 
+def row_topk(
+    rows: int,
+    cols: int,
+    k: int,
+    threads: int = 1,
+    *,
+    dtype: Any,
+    largest: bool = True,
+    target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> Any:
+    return _compile_topk(
+        rows, cols, k, threads, dtype,
+        largest=largest,
+        target=target, execution_backend=execution_backend,
+    )
+
+
 def row_all(
     rows: int,
     cols: int,
@@ -402,6 +503,7 @@ __all__ = [
     "row_amin",
     "row_argmax",
     "row_argmin",
+    "row_topk",
     "row_all",
     "row_any",
     "row_cumsum",

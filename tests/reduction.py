@@ -16,6 +16,7 @@ from tileops import (
     reduce_mean,
     reduce_prod,
     reduce_sum,
+    topk,
 )
 
 RTOL, ATOL = 1e-3, 1e-3
@@ -120,3 +121,35 @@ def test_reduce_cumsum_out(x_3d):
     r = reduce_cumsum(x_3d, dim=-1, out=out)
     assert r is out
     torch.testing.assert_close(out, ref, rtol=RTOL, atol=ATOL)
+
+
+def test_topk_last_dim(x_3d):
+    v, i = topk(x_3d, 4, dim=-1)
+    rv, ri = torch.topk(x_3d, 4, dim=-1, sorted=True)
+    assert v.shape == rv.shape == (4, 8, 4)
+    assert i.shape == ri.shape
+    assert i.dtype == torch.int64
+    torch.testing.assert_close(v, rv, rtol=RTOL, atol=ATOL)
+    torch.testing.assert_close(i, ri)
+
+
+def test_topk_inner_dim_smallest(x_3d):
+    v, i = topk(x_3d, 3, dim=1, largest=False)
+    rv, ri = torch.topk(x_3d, 3, dim=1, largest=False, sorted=True)
+    assert v.shape == (4, 3, 16)
+    torch.testing.assert_close(v, rv, rtol=RTOL, atol=ATOL)
+    torch.testing.assert_close(i, ri)
+
+
+def test_topk_1d(platform):
+    _, dev = platform
+    x = torch.randn(12, device=dev)
+    v, i = topk(x, 5, dim=0)
+    rv, ri = torch.topk(x, 5, dim=0, sorted=True)
+    torch.testing.assert_close(v, rv, rtol=RTOL, atol=ATOL)
+    torch.testing.assert_close(i, ri)
+
+
+def test_topk_k_too_large(x_3d):
+    with pytest.raises(ValueError, match="cannot exceed"):
+        topk(x_3d, 100, dim=-1)

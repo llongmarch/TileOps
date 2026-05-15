@@ -16,6 +16,8 @@ Supported dtypes:
 
 ``reduce_cumsum`` uses prefix sums inside each merged row via
 :func:`tileops.runtime.invoke_unary_kernel`.
+
+.. seealso:: :mod:`tileops.topk` for the top-*k* operator.
 """
 
 from __future__ import annotations

@@ -30,6 +30,7 @@ from tileops.runtime import (
     invoke_nary_kernel,
     invoke_row_index_reduce_kernel,
     invoke_row_reduce_kernel,
+    invoke_row_topk_kernel,
     invoke_unary_kernel,
     make_kernel_runner,
     make_unary_kernel_runner,
@@ -104,6 +105,9 @@ from tileops.reduction import (
     reduce_sum,
 )
 
+# ── Re-exports: topk (separate module) ──────────────────────────────────────
+from tileops.topk import topk
+
 # ── Re-exports: norm (softmax, layer norm, …) ────────────────────────────
 from tileops.norm import (
     layer_norm,
@@ -166,6 +170,7 @@ __all__ = [
     "invoke_kernel",
     "invoke_row_index_reduce_kernel",
     "invoke_row_reduce_kernel",
+    "invoke_row_topk_kernel",
     "invoke_nary_kernel",
     "invoke_unary_kernel",
     "make_kernel_runner",
@@ -223,6 +228,7 @@ __all__ = [
     "reduce_all",
     "reduce_any",
     "reduce_cumsum",
+    "topk",
     # norm
     "softmax",
     "safe_softmax",

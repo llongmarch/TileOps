@@ -53,6 +53,7 @@ __all__ = [
     "invoke_gemv_kernel",
     "invoke_row_reduce_kernel",
     "invoke_row_index_reduce_kernel",
+    "invoke_row_topk_kernel",
     "invoke_nary_kernel",
     "invoke_quant_kernel",
     "invoke_unary_kernel",
@@ -727,6 +728,77 @@ def invoke_row_index_reduce_kernel(
     if oi.data_ptr() != out_index.data_ptr():
         out_index.copy_(oi)
     return out_index
+
+
+def invoke_row_topk_kernel(
+    kernel: Any,
+    x_2d: torch.Tensor,
+    out_values: torch.Tensor,
+    out_index: torch.Tensor,
+    *,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Per-row top-*k* along the last axis of a 2-D view.
+
+    *out_values* matches *x_2d* dtype (flattened ``m * k``); *out_index* is
+    ``torch.int64`` (flattened ``m * k``).
+    """
+    if x_2d.ndim != 2:
+        raise ValueError("invoke_row_topk_kernel expects 2-D x_2d")
+    m, _n = x_2d.shape
+    k = out_index.numel() // m if m > 0 else 0
+    if out_values.ndim != 1 or out_values.numel() != m * k:
+        raise ValueError(
+            f"invoke_row_topk_kernel: out_values must be 1-D of length {m * k}"
+        )
+    if out_index.ndim != 1 or out_index.numel() != m * k:
+        raise ValueError(
+            f"invoke_row_topk_kernel: out_index must be 1-D of length {m * k}"
+        )
+    if out_index.dtype != torch.int64:
+        raise TypeError("invoke_row_topk_kernel: out_index must be torch.int64")
+    if x_2d.device != out_values.device or out_index.device != x_2d.device:
+        raise TypeError(
+            "invoke_row_topk_kernel: all tensors must share device"
+        )
+    if out_values.dtype != x_2d.dtype:
+        raise TypeError("invoke_row_topk_kernel: out_values dtype must match input")
+
+    xf = x_2d.contiguous().reshape(-1)
+    vf = out_values.contiguous().reshape(-1)
+    idxf = out_index.contiguous().reshape(-1)
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    kind = target_kind(tgt)
+    if kind == "metal" and eb == "torch":
+        kernel(xf, vf, idxf)
+        if vf.data_ptr() != out_values.data_ptr():
+            out_values.copy_(vf)
+        if idxf.data_ptr() != out_index.data_ptr():
+            out_index.copy_(idxf)
+        return out_values, out_index
+    ret = kernel(xf)
+    if ret is not None:
+        if isinstance(ret, (tuple, list)):
+            vf.copy_(ret[0].reshape(-1))
+            idxf.copy_(ret[1].reshape(-1))
+        else:
+            raise TypeError(
+                "invoke_row_topk_kernel: expected (values, indices) from kernel"
+            )
+    else:
+        kernel(xf, vf, idxf)
+    if vf.data_ptr() != out_values.data_ptr():
+        out_values.copy_(vf)
+    if idxf.data_ptr() != out_index.data_ptr():
+        out_index.copy_(idxf)
+    return out_values, out_index
 
 
 def invoke_unary_kernel(

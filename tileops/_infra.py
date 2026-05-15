@@ -279,6 +279,7 @@ _REDUCE_OP_TO_BACKEND_FN: dict[str, str] = {
     "all": "row_all",
     "any": "row_any",
     "cumsum": "row_cumsum",
+    "topk": "row_topk",
 }
 
 
@@ -291,12 +292,15 @@ def dispatch_compile_reduce(
     threads: int,
     dtype: Any,
     execution_backend: Optional[str] = None,
+    k: Optional[int] = None,
+    largest: bool = True,
     backend_packages: dict[str, str] = BACKEND_PACKAGES,
 ) -> Any:
     """Compile a row-wise reduction kernel (``tileops.*.reduce``).
 
     *rows* × *cols* is the logical 2-D view after merging the reduction *dim*
     to the last axis (``cols`` is the extent along that axis).
+    For ``op_name="topk"``, pass *k* and *largest*.
     """
     kind = target_kind(target)
     pkg = backend_packages.get(kind)
@@ -322,6 +326,16 @@ def dispatch_compile_reduce(
     if fn is None:
         raise NotImplementedError(
             f"{pkg}.reduce has no {fn_name}() for {target!r}"
+        )
+    if op_name == "topk":
+        if k is None:
+            raise ValueError("dispatch_compile_reduce: topk requires k=")
+        return fn(
+            rows, cols, k, threads,
+            dtype=dtype,
+            largest=largest,
+            target=target,
+            execution_backend=execution_backend,
         )
     return fn(
         rows, cols, threads,
