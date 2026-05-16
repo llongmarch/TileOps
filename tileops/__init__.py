@@ -8,12 +8,11 @@ Usage is as simple as PyTorch::
     mx   = maximum(x, y)
     mask = gt(x, y)          # float tensor of 0s and 1s
 
-All public symbols are listed in :data:`__all__`.  Kernel IR lives in
-backend subpackages (``tileops.cuda.binary``, ``tileops.metal.norm``, …);
-facades ``tileops.binary``, ``tileops.activation``, ``tileops.fused``,
-``tileops.norm``, ``tileops.blas``, ``tileops.reduction``, ``tileops.quant``, …
-provide the end-user API.  TileLang backends are ``tileops.cuda.*`` /
-``tileops.metal.*``.  Runtime helpers live in ``tileops.runtime``.
+All public symbols are listed in :data:`__all__`.  Kernel IR lives in the
+backend subpackage (``tileops.backend.cuda``, ``tileops.backend.metal``).
+Facades (``tileops.binary``, ``tileops.activation``, ``tileops.norm``, …)
+provide the end-user API.  Internal infrastructure lives in
+``tileops.runtime``.
 """
 
 # ── Re-exports: runtime ─────────────────────────────────────────────────
@@ -25,6 +24,9 @@ from tileops.runtime import (
     default_torch_device,
     heuristic_tilelang_target,
     invoke_conv_kernel,
+    invoke_gather_kernel,
+    invoke_tril_triu_kernel,
+    invoke_row_sort_kernel,
     invoke_gemm_kernel,
     invoke_gemv_kernel,
     invoke_kernel,
@@ -37,7 +39,6 @@ from tileops.runtime import (
     make_unary_kernel_runner,
     normalize_elem_dtype,
     setup_metal_workarounds,
-    suggest_pointwise_config,
     suggest_tile_config,
     sync_device,
     target_kind,
@@ -53,9 +54,11 @@ from tileops.binary import (
     # comparison
     eq, ne, gt, ge, lt, le,
     # math
-    atan2, copysign, hypot, xlogy,
+    atan2, copysign, hypot, xlogy, logaddexp,
     # logical
     logical_and, logical_or, logical_xor,
+    # bitwise
+    bitwise_and, bitwise_or, bitwise_xor, shift_left, shift_right,
 )
 
 # ── Re-exports: activation ops ──────────────────────────────────────────
@@ -129,12 +132,64 @@ from tileops.conv import (
 
 # ── Re-exports: unary (math) ───────────────────────────────────────────────
 from tileops.unary import (
-    exp, log,
+    # exponential / logarithmic
+    exp, log, exp2, exp10, log2, log10, log1p,
+    # trigonometry
+    sin, cos, tan,
+    # inverse trigonometry
+    asin, acos, atan,
+    # hyperbolic
+    sinh, cosh,
+    # inverse hyperbolic
+    asinh, acosh, atanh,
+    # power / root
     sqrt, rsqrt, square,
+    # error function
+    erf,
+    # sign / absolute
     abs, sign, neg,
-    round, floor, ceil,
+    # special-value detection
+    isnan, isinf, isfinite,
+    # rounding
+    round, floor, ceil, trunc,
+    # reciprocal
     reciprocal,
+    # bitwise
+    bitwise_not,
+    # clamp
     clamp,
+)
+
+# ── Re-exports: indexing ───────────────────────────────────────────────────
+from tileops.indexing import (
+    gather,
+    index_select,
+    nonzero,
+)
+
+# ── Re-exports: condition ──────────────────────────────────────────────────
+from tileops.condition import (
+    where,
+    masked_fill,
+)
+
+# ── Re-exports: matrix ─────────────────────────────────────────────────────
+from tileops.matrix import (
+    tril,
+    triu,
+)
+
+# ── Re-exports: shape ──────────────────────────────────────────────────────
+from tileops.shape import (
+    cat, stack, split, chunk,
+    permute, transpose, flip,
+    repeat, expand,
+)
+
+# ── Re-exports: sort ───────────────────────────────────────────────────────
+from tileops.sort import (
+    sort,
+    argsort,
 )
 
 # ── Re-exports: quant (symmetric INT8 + vLLM-style helpers) ───────────────
@@ -185,6 +240,9 @@ __all__ = [
     "invoke_gemm_kernel",
     "invoke_gemv_kernel",
     "invoke_conv_kernel",
+    "invoke_gather_kernel",
+    "invoke_tril_triu_kernel",
+    "invoke_row_sort_kernel",
     "invoke_kernel",
     "invoke_row_index_reduce_kernel",
     "invoke_row_reduce_kernel",
@@ -195,7 +253,6 @@ __all__ = [
     "make_unary_kernel_runner",
     "normalize_elem_dtype",
     "setup_metal_workarounds",
-    "suggest_pointwise_config",
     "suggest_tile_config",
     "sync_device",
     "target_kind",
@@ -209,8 +266,12 @@ __all__ = [
     "eq", "ne", "gt", "ge", "lt", "le",
     # binary — math
     "atan2", "copysign", "hypot", "xlogy",
+    # binary — math (continued)
+    "logaddexp",
     # binary — logical
     "logical_and", "logical_or", "logical_xor",
+    # binary — bitwise
+    "bitwise_and", "bitwise_or", "bitwise_xor", "shift_left", "shift_right",
     # activation — classic
     "relu", "sigmoid", "tanh",
     # activation — gelu
@@ -259,13 +320,44 @@ __all__ = [
     # conv
     "conv1d",
     "conv2d",
-    # unary (math)
-    "exp", "log",
+    # unary — exponential / logarithmic
+    "exp", "log", "exp2", "exp10", "log2", "log10", "log1p",
+    # unary — trigonometry
+    "sin", "cos", "tan",
+    # unary — inverse trigonometry
+    "asin", "acos", "atan",
+    # unary — hyperbolic
+    "sinh", "cosh",
+    # unary — inverse hyperbolic
+    "asinh", "acosh", "atanh",
+    # unary — power / root
     "sqrt", "rsqrt", "square",
+    # unary — error function
+    "erf",
+    # unary — sign / absolute
     "abs", "sign", "neg",
-    "round", "floor", "ceil",
+    # unary — special-value detection
+    "isnan", "isinf", "isfinite",
+    # unary — rounding
+    "round", "floor", "ceil", "trunc",
+    # unary — reciprocal
     "reciprocal",
+    # unary — bitwise
+    "bitwise_not",
+    # unary — clamp
     "clamp",
+    # indexing
+    "gather", "index_select", "nonzero",
+    # condition
+    "where", "masked_fill",
+    # matrix
+    "tril", "triu",
+    # shape
+    "cat", "stack", "split", "chunk",
+    "permute", "transpose", "flip",
+    "repeat", "expand",
+    # sort
+    "sort", "argsort",
     # quant
     "quantize_per_tensor",
     "dequantize_per_tensor",

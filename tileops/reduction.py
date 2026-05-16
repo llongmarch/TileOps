@@ -26,7 +26,7 @@ from typing import Optional
 
 import torch
 
-from tileops._infra import dispatch_compile_reduce
+from tileops.runtime import dispatch_compile_reduce
 from tileops._shape import merge_on_dim, unmerge
 from tileops.runtime import (
     default_execution_backend,

@@ -33,7 +33,7 @@ from typing import Optional
 
 import torch
 
-from tileops._infra import dispatch_compile
+from tileops.runtime import dispatch_compile
 from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,
@@ -74,7 +74,7 @@ def _validate_binary(
             )
 
 
-def _run_binary(
+def _dispatch_binary(
     op_name: str,
     x: torch.Tensor,
     y: torch.Tensor,
@@ -100,122 +100,158 @@ def _run_binary(
 
 def add(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise addition: ``out[i] = x[i] + y[i]``."""
-    return _run_binary("add", x, y, out)
+    return _dispatch_binary("add", x, y, out)
 
 
 def sub(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise subtraction: ``out[i] = x[i] - y[i]``."""
-    return _run_binary("sub", x, y, out)
+    return _dispatch_binary("sub", x, y, out)
 
 
 def mul(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise multiplication: ``out[i] = x[i] * y[i]``."""
-    return _run_binary("mul", x, y, out)
+    return _dispatch_binary("mul", x, y, out)
 
 
 def div(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise division: ``out[i] = x[i] / y[i]``."""
-    return _run_binary("div", x, y, out)
+    return _dispatch_binary("div", x, y, out)
 
 
 def pow(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise power: ``out[i] = x[i] ** y[i]``."""
-    return _run_binary("pow", x, y, out)
+    return _dispatch_binary("pow", x, y, out)
 
 
 def fmod(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """C-style float modulo (sign matches dividend ``x``)."""
-    return _run_binary("fmod", x, y, out)
+    return _dispatch_binary("fmod", x, y, out)
 
 
 def remainder(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Python-style remainder (sign matches divisor ``y``)."""
-    return _run_binary("remainder", x, y, out)
+    return _dispatch_binary("remainder", x, y, out)
 
 
 def floor_div(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Floor division: ``out[i] = floor(x[i] / y[i])``."""
-    return _run_binary("floor_div", x, y, out)
+    return _dispatch_binary("floor_div", x, y, out)
 
 
 # ── Extrema ───────────────────────────────────────────────────────────────
 
 def maximum(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise maximum: ``out[i] = max(x[i], y[i])``."""
-    return _run_binary("maximum", x, y, out)
+    return _dispatch_binary("maximum", x, y, out)
 
 
 def minimum(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise minimum: ``out[i] = min(x[i], y[i])``."""
-    return _run_binary("minimum", x, y, out)
+    return _dispatch_binary("minimum", x, y, out)
 
 
 # ── Comparison (output 0.0 / 1.0) ────────────────────────────────────────
 
 def eq(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise equality: 1.0 where ``x[i] == y[i]``, else 0.0."""
-    return _run_binary("eq", x, y, out)
+    return _dispatch_binary("eq", x, y, out)
 
 
 def ne(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise inequality: 1.0 where ``x[i] != y[i]``, else 0.0."""
-    return _run_binary("ne", x, y, out)
+    return _dispatch_binary("ne", x, y, out)
 
 
 def gt(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise greater-than: 1.0 where ``x[i] > y[i]``, else 0.0."""
-    return _run_binary("gt", x, y, out)
+    return _dispatch_binary("gt", x, y, out)
 
 
 def ge(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise greater-or-equal: 1.0 where ``x[i] >= y[i]``."""
-    return _run_binary("ge", x, y, out)
+    return _dispatch_binary("ge", x, y, out)
 
 
 def lt(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise less-than: 1.0 where ``x[i] < y[i]``, else 0.0."""
-    return _run_binary("lt", x, y, out)
+    return _dispatch_binary("lt", x, y, out)
 
 
 def le(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise less-or-equal: 1.0 where ``x[i] <= y[i]``."""
-    return _run_binary("le", x, y, out)
+    return _dispatch_binary("le", x, y, out)
 
 
 # ── Math ──────────────────────────────────────────────────────────────────
 
 def atan2(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise ``atan2(x, y)`` (four-quadrant arc-tangent)."""
-    return _run_binary("atan2", x, y, out)
+    return _dispatch_binary("atan2", x, y, out)
 
 
 def copysign(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise copysign: ``|x[i]|`` with sign of ``y[i]``."""
-    return _run_binary("copysign", x, y, out)
+    return _dispatch_binary("copysign", x, y, out)
 
 
 def hypot(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise hypotenuse: ``sqrt(x[i]² + y[i]²)``."""
-    return _run_binary("hypot", x, y, out)
+    return _dispatch_binary("hypot", x, y, out)
 
 
 def xlogy(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise ``x * log(y)``, defined as 0 when ``x == 0``."""
-    return _run_binary("xlogy", x, y, out)
+    return _dispatch_binary("xlogy", x, y, out)
 
 
 # ── Logical (non-zero = True; output 0.0 / 1.0) ─────────────────────────
 
 def logical_and(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise logical AND (non-zero is True)."""
-    return _run_binary("logical_and", x, y, out)
+    return _dispatch_binary("logical_and", x, y, out)
 
 
 def logical_or(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise logical OR (non-zero is True)."""
-    return _run_binary("logical_or", x, y, out)
+    return _dispatch_binary("logical_or", x, y, out)
 
 
 def logical_xor(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Element-wise logical XOR (non-zero is True)."""
-    return _run_binary("logical_xor", x, y, out)
+    return _dispatch_binary("logical_xor", x, y, out)
+
+
+# ── Bitwise ─────────────────────────────────────────────────────────────────
+
+
+def bitwise_and(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Element-wise bitwise AND."""
+    return _dispatch_binary("bitwise_and", x, y, out)
+
+
+def bitwise_or(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Element-wise bitwise OR."""
+    return _dispatch_binary("bitwise_or", x, y, out)
+
+
+def bitwise_xor(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Element-wise bitwise XOR."""
+    return _dispatch_binary("bitwise_xor", x, y, out)
+
+
+def shift_left(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Element-wise left shift: ``x[i] << y[i]``."""
+    return _dispatch_binary("shift_left", x, y, out)
+
+
+def shift_right(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Element-wise right shift: ``x[i] >> y[i]``."""
+    return _dispatch_binary("shift_right", x, y, out)
+
+
+# ── Math (continued) ────────────────────────────────────────────────────────
+
+
+def logaddexp(x: torch.Tensor, y: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Element-wise ``log(exp(x) + exp(y))``, numerically stable."""
+    return _dispatch_binary("logaddexp", x, y, out)

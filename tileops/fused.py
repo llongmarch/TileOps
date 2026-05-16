@@ -19,7 +19,7 @@ from typing import Optional
 
 import torch
 
-from tileops._infra import dispatch_compile
+from tileops.runtime import dispatch_compile
 from tileops.norm import skip_layer_norm, skip_rms_norm
 from tileops.runtime import (
     default_execution_backend,
@@ -64,7 +64,7 @@ def _validate_fused(
             )
 
 
-def _run_fused(
+def _dispatch_fused(
     op_name: str,
     a: torch.Tensor,
     b: torch.Tensor,
@@ -101,7 +101,7 @@ def silu_and_mul(
     out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """``silu(a) * b`` element-wise (same shapes)."""
-    return _run_fused("silu_and_mul", a, b, out=out)
+    return _dispatch_fused("silu_and_mul", a, b, out=out)
 
 
 def gelu_and_mul(
@@ -111,7 +111,7 @@ def gelu_and_mul(
     out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """``gelu(a) * b`` with tanh GELU approximation (matches :func:`tileops.gelu`)."""
-    return _run_fused("gelu_and_mul", a, b, out=out)
+    return _dispatch_fused("gelu_and_mul", a, b, out=out)
 
 
 __all__ = [

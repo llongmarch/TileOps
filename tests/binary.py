@@ -269,7 +269,7 @@ def test_add_shared_cuda(platform, tensors_2d):
         pytest.skip(f"shared-tile add requires cuda/hip (current: {tgt!r})")
     import tilelang.language as T
 
-    from tileops.cuda.binary import add_shared
+    from tileops.backend.cuda.binary import add_shared
     from tileops.runtime import default_execution_backend, invoke_kernel
 
     eb = default_execution_backend(tgt, _)

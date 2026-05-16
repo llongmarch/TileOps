@@ -2,7 +2,7 @@
 
 :class:`topk` mirrors ``torch.topk`` and uses the same *merge dim to last
 axis* layout as :mod:`tileops.reduction`.  The per-row insertion-sort kernel
-lives in the backend modules (``tileops.cuda.reduce`` / ``tileops.metal.reduce``).
+lives in the backend modules (``tileops.backend.cuda.reduce`` / ``tileops.backend.metal.reduce``).
 
 Supported dtypes
 ----------------
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import torch
 
-from tileops._infra import dispatch_compile_reduce
+from tileops.runtime import dispatch_compile_reduce
 from tileops._shape import merge_on_dim, unmerge
 from tileops.runtime import (
     default_execution_backend,

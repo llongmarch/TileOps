@@ -1,6 +1,6 @@
 """Symmetric INT8 quantize / dequantize (per-tensor and per-channel).
 
-TileLang kernels live in ``tileops.cuda.quant`` and ``tileops.metal.quant``.
+TileLang kernels live in ``tileops.backend.cuda.quant`` and ``tileops.backend.metal.quant``.
 vLLM-style helpers are in :mod:`tileops.quant_int8`, :mod:`tileops.quant_fp8`,
 and :mod:`tileops.quant_awq`.
 
@@ -21,7 +21,7 @@ from typing import Optional
 
 import torch
 
-from tileops._infra import dispatch_compile_quant
+from tileops.runtime import dispatch_compile_quant
 from tileops._shape import merge_on_dim, unmerge
 from tileops.runtime import (
     default_execution_backend,

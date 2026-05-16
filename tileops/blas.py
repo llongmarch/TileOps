@@ -16,7 +16,7 @@ from typing import Optional, Union
 
 import torch
 
-from tileops._infra import dispatch_compile_blas
+from tileops.runtime import dispatch_compile_blas
 from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,

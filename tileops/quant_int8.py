@@ -16,7 +16,7 @@ from typing import Optional
 
 import torch
 
-from tileops._infra import dispatch_compile_quant
+from tileops.runtime import dispatch_compile_quant
 from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,

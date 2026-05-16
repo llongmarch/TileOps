@@ -32,6 +32,65 @@
 
 ---
 
+## Indexing（索引）
+
+| 算子 | 说明 | 后端 |
+|------|------|------|
+| `gather` | 按索引收集元素 | TileLang (`cuda.indexing`, `metal.indexing`) |
+| `index_select` | 沿 dim 按索引选择 | PyTorch ⓡ |
+| `nonzero` | 非零元素索引 | PyTorch ⓡ |
+
+---
+
+## Condition（条件选择）
+
+| 算子 | 说明 | 后端 |
+|------|------|------|
+| `where(cond, x, y)` | 条件选择 | TileLang (`cuda.condition`, `metal.condition`) |
+| `masked_fill(x, mask, value)` | 掩码填值 | TileLang (kernel) + PyTorch ⓡ (broadcast) |
+
+---
+
+## Matrix（三角矩阵）
+
+| 算子 | 说明 | 后端 |
+|------|------|------|
+| `tril` | 下三角矩阵 | TileLang (`cuda.matrix`, `metal.matrix`) |
+| `triu` | 上三角矩阵 | TileLang |
+
+支持 `diagonal` 参数，支持 batched 输入。
+
+---
+
+## Shape（形状操作）
+
+所有算子委托给 PyTorch ⓡ：
+
+| 算子 | 说明 |
+|------|------|
+| `cat` | 沿维拼接 |
+| `stack` | 沿新维堆叠 |
+| `split` | 按大小拆分 |
+| `chunk` | 按块数拆分 |
+| `permute` | 维度重排 |
+| `transpose` | 两维转置 |
+| `flip` | 沿维翻转 |
+| `repeat` | 复制 |
+| `expand` | 广播 |
+
+---
+
+## Sort（排序）
+
+| 算子 | 说明 | 后端 |
+|------|------|------|
+| `sort` | 沿维排序 | TileLang (`cuda.sort`, `metal.sort`) |
+| `argsort` | 排序索引 | TileLang |
+
+支持 `descending` 参数和任意 `dim`。
+
+---
+
 ## Unary（数学一元）
 
 | 类别 | 算子 |
@@ -105,19 +164,6 @@
 
 ---
 
-## Attention（待实现 · 热点）
-
-尚未实现；子步骤暂用 `softmax`、`bmm` 等顶替。
-
-- `scaled_dot_product_attention`
-- `flash_attention` / `flash_attention_varlen`
-- `paged_attention`
-- `apply_rotary_pos_emb`
-- `reshape_and_cache`
-- `fp8_attention`（可选）
-
----
-
 ## Fused（LLM 融合）
 
 | 算子 | 说明 |
@@ -138,46 +184,9 @@
 | `quantize_per_channel` | 按通道 scale → `int8` |
 | `dequantize_per_channel` | 按通道反量化 |
 
-映射：`q = clamp(round(x / scale), -128, 127)`，`x̂ = float(q) * scale`（无 zero-point）。
+### vLLM INT8 / FP8 / AWQ
 
-### vLLM INT8（`tileops.quant_int8`）
-
-| 算子 | 后端 |
-|------|------|
-| `input_to_int8` | PyTorch ⓡ |
-| `per_token_quant_int8` | TileLang（per-row） |
-| `per_token_group_quant_int8` | 基于 per-token |
-| `block_dequant` | PyTorch ⓡ |
-| `w8a8_block_int8_matmul` | PyTorch ⓡ |
-| `apply_w8a8_block_int8_linear` | PyTorch ⓡ |
-
-### vLLM FP8（`tileops.quant_fp8`）
-
-| 算子 | 后端 |
-|------|------|
-| `is_fp8`, `default_fp8_dtype`, `get_fp8_min_max` | 工具函数 |
-| `input_to_float8` | PyTorch ⓡ |
-| `per_token_group_quant_fp8` | PyTorch ⓡ |
-| `block_dequant_fp8` | PyTorch ⓡ |
-| `w8a8_block_fp8_matmul` | PyTorch ⓡ |
-| `w8a8_triton_block_scaled_mm` | 同上（vLLM 别名） |
-| `apply_w8a8_block_fp8_linear` | PyTorch ⓡ |
-
-### vLLM AWQ（`tileops.quant_awq`）
-
-| 算子 | 后端 |
-|------|------|
-| `unpack_awq_int4`, `pack_awq_int4` | PyTorch ⓡ |
-| `awq_dequantize` / `awq_dequantize_triton` | PyTorch ⓡ |
-| `awq_gemm` / `awq_gemm_triton` | PyTorch ⓡ |
-
-常量：`AWQ_TRITON_SUPPORTED_GROUP_SIZES`, `REVERSE_AWQ_ORDER`。
-
----
-
-## Runtime（编译与调用，非算子）
-
-`compile_prim`, `bench_ms`, `default_tilelang_target`, `default_torch_device`, `default_execution_backend`, `invoke_*`, `suggest_tile_config`, `torch_to_tl_dtype`, `target_kind`, `setup_metal_workarounds`, 等。
+参见 `tileops.quant_int8`、`tileops.quant_fp8`、`tileops.quant_awq`。
 
 ---
 
@@ -187,18 +196,14 @@
 |----------|----------------------|
 | `tileops.binary` | `tileops.cuda.binary`, `tileops.metal.binary` |
 | `tileops.activation` | `tileops.cuda.activation`, `tileops.metal.activation` |
+| `tileops.unary` | `tileops.cuda.unary`, `tileops.metal.unary` |
 | `tileops.blas` | `tileops.cuda.blas`, `tileops.metal.blas` |
+| `tileops.conv` | `tileops.cuda.conv`, `tileops.metal.conv` |
+| `tileops.indexing` | `tileops.cuda.indexing` (gather), PyTorch ⓡ (index_select, nonzero) |
+| `tileops.condition` | `tileops.cuda.condition`, `tileops.metal.condition` |
+| `tileops.matrix` | `tileops.cuda.matrix`, `tileops.metal.matrix` |
+| `tileops.sort` | `tileops.cuda.sort`, `tileops.metal.sort` |
 | `tileops.reduction` | `tileops.cuda.reduce`, `tileops.metal.reduce` |
 | `tileops.norm` | `tileops.cuda.norm`, `tileops.metal.norm` |
 | `tileops.fused` | `tileops.cuda.fused`, `tileops.metal.fused` |
 | `tileops.quant` | `tileops.cuda.quant`, `tileops.metal.quant` |
-| `tileops.conv` | `tileops.cuda.conv`, `tileops.metal.conv` |
-| `tileops.unary` | `tileops.cuda.unary`, `tileops.metal.unary` |
-
----
-
-## 规划中（其他 · 尚未实现）
-
-- 张量操作：`gather`, `scatter`, `where`, `masked_fill`, …
-- `group_norm`, `cross_entropy_loss`
-- 更多 attention 见上节

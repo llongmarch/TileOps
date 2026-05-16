@@ -30,7 +30,7 @@ from typing import Optional, Sequence
 
 import torch
 
-from tileops._infra import dispatch_compile_norm
+from tileops.runtime import dispatch_compile_norm
 from tileops._shape import (
     merge_on_dim as _merge_on_dim,
     trailing_normalized as _trailing_normalized,

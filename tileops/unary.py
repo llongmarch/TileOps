@@ -24,48 +24,29 @@ Usage::
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 
-from tileops._infra import dispatch_compile
+from tileops.runtime import dispatch_compile
 from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,
     default_torch_device,
     invoke_unary_kernel,
     suggest_tile_config,
-    target_kind,
     torch_to_tl_dtype,
+    validate_single_input,
 )
 
 
-def _validate_unary(
-    x: torch.Tensor, out: Optional[torch.Tensor], op: str,
-) -> None:
-    if x.numel() == 0:
-        raise ValueError(f"{op}: input tensor is empty")
-    if out is not None:
-        if out.shape != x.shape:
-            raise ValueError(
-                f"{op}: out.shape={out.shape} != input shape {x.shape}"
-            )
-        if out.dtype != x.dtype:
-            raise TypeError(
-                f"{op}: out.dtype={out.dtype} != input dtype {x.dtype}"
-            )
-        if out.device != x.device:
-            raise ValueError(
-                f"{op}: out.device={out.device} != input device {x.device}"
-            )
-
-
-def _run_unary(
+def _dispatch_unary(
     op_name: str,
     x: torch.Tensor,
     out: Optional[torch.Tensor] = None,
+    **kwargs: Any,
 ) -> torch.Tensor:
-    _validate_unary(x, out, op_name)
+    validate_single_input(x, out, op_name)
     tl_dtype = torch_to_tl_dtype(x.dtype)
     tgt = default_tilelang_target()
     dev = default_torch_device(tgt)
@@ -76,6 +57,7 @@ def _run_unary(
         module_name="unary", op_name=op_name, target=tgt,
         shape=shape, block_size=bs, threads=threads,
         dtype=tl_dtype, execution_backend=eb,
+        **kwargs,
     )
     return invoke_unary_kernel(kernel, x, out=out,
                                tilelang_target=tgt, execution_backend=eb)
@@ -86,12 +68,104 @@ def _run_unary(
 
 def exp(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``exp(x)`` — base-*e* exponential."""
-    return _run_unary("exp", x, out)
+    return _dispatch_unary("exp", x, out)
 
 
 def log(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``log(x)`` — natural logarithm."""
-    return _run_unary("log", x, out)
+    return _dispatch_unary("log", x, out)
+
+
+def exp2(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``exp2(x)`` — base-2 exponential (2**x)."""
+    return _dispatch_unary("exp2", x, out)
+
+
+def exp10(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``exp10(x)`` — base-10 exponential (10**x)."""
+    return _dispatch_unary("exp10", x, out)
+
+
+def log2(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``log2(x)`` — base-2 logarithm."""
+    return _dispatch_unary("log2", x, out)
+
+
+def log10(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``log10(x)`` — base-10 logarithm."""
+    return _dispatch_unary("log10", x, out)
+
+
+def log1p(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``log1p(x)`` — log(1 + x), numerically stable for small x."""
+    return _dispatch_unary("log1p", x, out)
+
+
+# ── Trigonometry ────────────────────────────────────────────────────────────
+
+
+def sin(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``sin(x)`` — element-wise sine."""
+    return _dispatch_unary("sin", x, out)
+
+
+def cos(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``cos(x)`` — element-wise cosine."""
+    return _dispatch_unary("cos", x, out)
+
+
+def tan(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``tan(x)`` — element-wise tangent."""
+    return _dispatch_unary("tan", x, out)
+
+
+# ── Inverse trigonometry ────────────────────────────────────────────────────
+
+
+def asin(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``asin(x)`` — element-wise arc-sine."""
+    return _dispatch_unary("asin", x, out)
+
+
+def acos(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``acos(x)`` — element-wise arc-cosine."""
+    return _dispatch_unary("acos", x, out)
+
+
+def atan(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``atan(x)`` — element-wise arc-tangent."""
+    return _dispatch_unary("atan", x, out)
+
+
+# ── Hyperbolic ───────────────────────────────────────────────────────────────
+
+
+def sinh(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``sinh(x)`` — element-wise hyperbolic sine."""
+    return _dispatch_unary("sinh", x, out)
+
+
+def cosh(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``cosh(x)`` — element-wise hyperbolic cosine."""
+    return _dispatch_unary("cosh", x, out)
+
+
+# ── Inverse hyperbolic ───────────────────────────────────────────────────────
+
+
+def asinh(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``asinh(x)`` — element-wise inverse hyperbolic sine."""
+    return _dispatch_unary("asinh", x, out)
+
+
+def acosh(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``acosh(x)`` — element-wise inverse hyperbolic cosine."""
+    return _dispatch_unary("acosh", x, out)
+
+
+def atanh(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``atanh(x)`` — element-wise inverse hyperbolic tangent."""
+    return _dispatch_unary("atanh", x, out)
 
 
 # ── Power / root ──────────────────────────────────────────────────────────
@@ -99,17 +173,25 @@ def log(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
 
 def sqrt(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``sqrt(x)`` — square root."""
-    return _run_unary("sqrt", x, out)
+    return _dispatch_unary("sqrt", x, out)
 
 
 def rsqrt(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``rsqrt(x)`` — reciprocal square root (1 / sqrt(x))."""
-    return _run_unary("rsqrt", x, out)
+    return _dispatch_unary("rsqrt", x, out)
 
 
 def square(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``square(x)`` — element-wise square (x * x)."""
-    return _run_unary("square", x, out)
+    return _dispatch_unary("square", x, out)
+
+
+# ── Error function ───────────────────────────────────────────────────────────
+
+
+def erf(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``erf(x)`` — error function (Gauss)."""
+    return _dispatch_unary("erf", x, out)
 
 
 # ── Sign / absolute ───────────────────────────────────────────────────────
@@ -117,17 +199,35 @@ def square(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tens
 
 def abs(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``abs(x)`` — element-wise absolute value."""
-    return _run_unary("abs", x, out)
+    return _dispatch_unary("abs", x, out)
 
 
 def sign(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``sign(x)`` — sign function (-1, 0, or 1)."""
-    return _run_unary("sign", x, out)
+    return _dispatch_unary("sign", x, out)
 
 
 def neg(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``neg(x)`` — element-wise negation (-x)."""
-    return _run_unary("neg", x, out)
+    return _dispatch_unary("neg", x, out)
+
+
+# ── Special-value detection ─────────────────────────────────────────────────
+
+
+def isnan(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``isnan(x)`` — 1.0 where NaN, else 0.0."""
+    return _dispatch_unary("isnan", x, out)
+
+
+def isinf(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``isinf(x)`` — 1.0 where ±inf, else 0.0."""
+    return _dispatch_unary("isinf", x, out)
+
+
+def isfinite(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``isfinite(x)`` — 1.0 where finite, else 0.0."""
+    return _dispatch_unary("isfinite", x, out)
 
 
 # ── Rounding ──────────────────────────────────────────────────────────────
@@ -135,17 +235,22 @@ def neg(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
 
 def round(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``round(x)`` — round to nearest integer."""
-    return _run_unary("round", x, out)
+    return _dispatch_unary("round", x, out)
 
 
 def floor(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``floor(x)`` — round down."""
-    return _run_unary("floor", x, out)
+    return _dispatch_unary("floor", x, out)
 
 
 def ceil(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``ceil(x)`` — round up."""
-    return _run_unary("ceil", x, out)
+    return _dispatch_unary("ceil", x, out)
+
+
+def trunc(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``trunc(x)`` — truncate toward zero."""
+    return _dispatch_unary("trunc", x, out)
 
 
 # ── Reciprocal ────────────────────────────────────────────────────────────
@@ -153,7 +258,15 @@ def ceil(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor
 
 def reciprocal(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
     """``reciprocal(x)`` — element-wise inverse (1/x)."""
-    return _run_unary("reciprocal", x, out)
+    return _dispatch_unary("reciprocal", x, out)
+
+
+# ── Bitwise ─────────────────────────────────────────────────────────────────
+
+
+def bitwise_not(x: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """``bitwise_not(x)`` — element-wise bitwise NOT."""
+    return _dispatch_unary("bitwise_not", x, out)
 
 
 # ── Clamp ─────────────────────────────────────────────────────────────────
@@ -171,54 +284,34 @@ def clamp(
     *min_val* and *max_val* are baked into the compiled kernel at compile time,
     so calling ``clamp`` with new threshold values triggers a re-compile.
     """
-    _validate_unary(x, out, "clamp")
-    tl_dtype = torch_to_tl_dtype(x.dtype)
-    tgt = default_tilelang_target()
-    dev = default_torch_device(tgt)
-    eb = default_execution_backend(tgt, dev)
-    shape = x.shape
-    n = math.prod(shape)
-    bs, threads = suggest_tile_config(n)
-
-    # Clamp has a special backend signature (extra min_val / max_val).
-    kind = target_kind(tgt)
-    from tileops._infra import BACKEND_PACKAGES
-    pkg = BACKEND_PACKAGES.get(kind)
-    if pkg is None:
-        raise NotImplementedError(
-            f"No unary backend for target kind {kind!r} ({tgt!r})"
-        )
-    import importlib
-    try:
-        mod = importlib.import_module(f"{pkg}.unary")
-    except ImportError as exc:
-        raise ImportError(
-            f"Failed to import {pkg}.unary for target {tgt!r}"
-        ) from exc
-
-    clamp_fn = getattr(mod, "clamp", None)
-    if clamp_fn is None:
-        raise NotImplementedError(
-            f"{pkg}.unary has no clamp() for {tgt!r}"
-        )
-
-    kernel = clamp_fn(
-        shape, bs, threads,
-        dtype=tl_dtype,
-        target=tgt,
-        execution_backend=eb,
-        min_val=float(min_val),
-        max_val=float(max_val),
-    )
-    return invoke_unary_kernel(kernel, x, out=out,
-                               tilelang_target=tgt, execution_backend=eb)
+    return _dispatch_unary("clamp", x, out, min_val=float(min_val), max_val=float(max_val))
 
 
 __all__ = [
-    "exp", "log",
+    # exponential / logarithmic
+    "exp", "log", "exp2", "exp10", "log2", "log10", "log1p",
+    # trigonometry
+    "sin", "cos", "tan",
+    # inverse trigonometry
+    "asin", "acos", "atan",
+    # hyperbolic
+    "sinh", "cosh",
+    # inverse hyperbolic
+    "asinh", "acosh", "atanh",
+    # power / root
     "sqrt", "rsqrt", "square",
+    # error function
+    "erf",
+    # sign / absolute
     "abs", "sign", "neg",
-    "round", "floor", "ceil",
+    # special-value detection
+    "isnan", "isinf", "isfinite",
+    # rounding
+    "round", "floor", "ceil", "trunc",
+    # reciprocal
     "reciprocal",
+    # bitwise
+    "bitwise_not",
+    # clamp
     "clamp",
 ]
