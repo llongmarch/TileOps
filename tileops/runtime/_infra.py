@@ -255,6 +255,95 @@ def dispatch_compile_norm(
     )
 
 
+def dispatch_compile_softmax(
+    *,
+    op_name: str,
+    target: str,
+    rows: int,
+    cols: int,
+    threads: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    eps: Optional[float] = None,
+) -> Any:
+    """Compile a row-wise softmax kernel (``tileops.*.softmax``).
+
+    *rows* x *cols* is the logical 2-D view (leading dims merged, softmax axis
+    last).
+    """
+    kind = target_kind(target)
+    pkg = BACKEND_PACKAGES.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No softmax backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(BACKEND_PACKAGES))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.softmax")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.softmax for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.softmax has no {op_name}() for {target!r}"
+        )
+    return fn(
+        rows, cols, threads,
+        dtype=dtype,
+        target=target,
+        execution_backend=execution_backend,
+        eps=eps,
+    )
+
+
+def dispatch_compile_pad(
+    *,
+    op_name: str,
+    target: str,
+    rows: int,
+    cols: int,
+    threads: int,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+    **kwargs: Any,
+) -> Any:
+    """Compile a constant-padding kernel (``tileops.*.pad``).
+
+    *rows* × *cols* is the original logical 2-D / 3-D view.  Extra kwargs
+    (pad_left, pad_right, pad_top, pad_bottom, value, h_in, w_in) are
+    forwarded to the backend builder.
+    """
+    kind = target_kind(target)
+    pkg = BACKEND_PACKAGES.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No pad backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(BACKEND_PACKAGES))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.pad")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.pad for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.pad has no {op_name}() for {target!r}"
+        )
+    return fn(
+        rows, cols, threads,
+        dtype=dtype,
+        target=target,
+        execution_backend=execution_backend,
+        **kwargs,
+    )
+
+
 def dispatch_compile_blas(
     *,
     op_name: str,

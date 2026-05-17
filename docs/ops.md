@@ -1,10 +1,12 @@
-# TileOps 已支持算子
+# TileOps 算子文档
 
 通过 `from tileops import …` 使用；完整列表见 `tileops.__all__`。
 
-**后端**：多数算子由 TileLang 编译至 `tileops.cuda.*` / `tileops.metal.*`；部分量化路径为 PyTorch 参考实现（标注 ⓡ）。
+**后端**：多数算子由 TileLang 编译至 `tileops.cuda.*` / `tileops.metal.*`；部分委托给 PyTorch（标注 ⓡ）。
 
 ---
+
+# 已实现算子
 
 ## BLAS（线性代数）
 
@@ -64,7 +66,7 @@
 
 ## Shape（形状操作）
 
-所有算子委托给 PyTorch ⓡ：
+委托给 PyTorch ⓡ：
 
 | 算子 | 说明 |
 |------|------|
@@ -77,6 +79,28 @@
 | `flip` | 沿维翻转 |
 | `repeat` | 复制 |
 | `expand` | 广播 |
+
+---
+
+## Pad（边界填充）
+
+| 算子 | 说明 | 后端 |
+|------|------|------|
+| `pad` | 边界填充（`constant` / `reflect` / `replicate` / `circular`） | TileLang (`cuda.pad`, `metal.pad`) + PyTorch ⓡ fallback |
+
+`constant` 模式且填充最后 1~2 维时使用 TileLang kernel；其他模式和更高维 padding 自动回退到 PyTorch。
+
+---
+
+## Interpolate（插值 / 缩放）
+
+委托给 PyTorch ⓡ：
+
+| 算子 | 说明 |
+|------|------|
+| `interpolate` | 张量缩放（`nearest` / `bilinear` / `bicubic` / `trilinear` / `area` 等） |
+
+支持 `size` 或 `scale_factor` 指定输出尺寸，以及 `align_corners`、`antialias` 参数。
 
 ---
 
@@ -95,11 +119,18 @@
 
 | 类别 | 算子 |
 |------|------|
-| 指数/对数 | `exp`, `log` |
+| 指数/对数 | `exp`, `log`, `exp2`, `exp10`, `log2`, `log10`, `log1p` |
+| 三角 | `sin`, `cos`, `tan` |
+| 反三角 | `asin`, `acos`, `atan` |
+| 双曲 | `sinh`, `cosh` |
+| 反双曲 | `asinh`, `acosh`, `atanh` |
 | 幂/根 | `sqrt`, `rsqrt`, `square` |
+| 误差函数 | `erf` |
 | 符号/绝对值 | `abs`, `sign`, `neg` |
-| 取整 | `round`, `floor`, `ceil` |
+| 特殊值检测 | `isnan`, `isinf`, `isfinite` |
+| 取整 | `round`, `floor`, `ceil`, `trunc` |
 | 倒数 | `reciprocal` |
+| 位运算 | `bitwise_not` |
 | 裁剪 | `clamp(min, max)` |
 
 ---
@@ -112,9 +143,11 @@
 
 **极值**：`maximum`, `minimum`
 
-**数学**：`atan2`, `copysign`, `hypot`, `xlogy`
+**数学**：`atan2`, `copysign`, `hypot`, `xlogy`, `logaddexp`
 
 **逻辑**：`logical_and`, `logical_or`, `logical_xor`
+
+**位运算**：`bitwise_and`, `bitwise_or`, `bitwise_xor`, `shift_left`, `shift_right`
 
 ---
 
@@ -149,7 +182,7 @@
 
 ---
 
-## Norm / Softmax
+## Softmax
 
 | 算子 | 说明 |
 |------|------|
@@ -157,6 +190,13 @@
 | `safe_softmax` | 与 `softmax` 同语义的显式别名 |
 | `online_softmax` | 单遍在线 Softmax |
 | `log_softmax` | Log-Softmax |
+
+---
+
+## Norm（归一化）
+
+| 算子 | 说明 |
+|------|------|
 | `layer_norm` | LayerNorm |
 | `rms_norm` | RMSNorm |
 | `skip_layer_norm` | 融合 `layer_norm(x + residual, …)` |
@@ -190,7 +230,74 @@
 
 ---
 
-## 模块与后端对应
+# 待实现算子
+
+纯推理场景，按优先级排列。
+
+| 标记 | 含义 |
+|:----:|------|
+| 🔴 P0 | LLM / 视觉推理中高频依赖 |
+| 🟡 P1 | 通用模型推理中常用 |
+| 🟢 P2 | 特定场景需求 |
+
+---
+
+## 🔴 P0 — 高优先级
+
+### Attention（LLM 推理核心）
+
+| 算子 | 用途 |
+|------|------|
+| `scaled_dot_product_attention` | 融合 SDPA（PyTorch 2.0 兼容） |
+| `flash_attention` / `flash_attention_varlen` | 变长 Flash Attention |
+| `paged_attention` | vLLM 分页注意力 |
+| `apply_rotary_pos_emb` | RoPE 旋转位置编码 |
+| `reshape_and_cache` | KV cache 管理 |
+
+### 归一化
+
+| 算子 | 用途 |
+|------|------|
+| `batch_norm` | Batch Normalization（eval 模式） |
+| `group_norm` | Group Normalization（ViT / Diffusion） |
+
+### Pooling
+
+| 算子 | 用途 |
+|------|------|
+| `max_pool2d` / `max_pool1d` | 最大池化 |
+| `avg_pool2d` / `avg_pool1d` | 平均池化 |
+
+---
+
+## 🟡 P1 — 中优先级
+
+| 算子 | 用途 |
+|------|------|
+| `adaptive_avg_pool2d` | 自适应平均池化（分类头） |
+
+---
+
+## 🟢 P2 — 低优先级
+
+| 算子 | 用途 |
+|------|------|
+| `masked_select` | 条件选择（flattened output） |
+| `one_hot` | 独热编码 |
+| `instance_norm` | Instance Normalization（风格迁移） |
+
+---
+
+## 不在推理范围内的算子
+
+以下仅为训练/反向传播设计，纯推理场景无需实现：
+
+- 损失函数：`cross_entropy_loss`、`nll_loss`、`mse_loss`、`l1_loss`、`kl_div`、`binary_cross_entropy`、`hinge_loss`、`smooth_l1_loss`
+- 反向传播：`scatter_add`（主要用于 gradient scatter）
+
+---
+
+# 模块与后端对应
 
 | 用户 API | TileLang 后端（如有） |
 |----------|----------------------|
@@ -204,6 +311,9 @@
 | `tileops.matrix` | `tileops.cuda.matrix`, `tileops.metal.matrix` |
 | `tileops.sort` | `tileops.cuda.sort`, `tileops.metal.sort` |
 | `tileops.reduction` | `tileops.cuda.reduce`, `tileops.metal.reduce` |
+| `tileops.pad` | `tileops.cuda.pad`, `tileops.metal.pad` + PyTorch ⓡ |
+| `tileops.interpolate` | PyTorch ⓡ |
+| `tileops.softmax` | `tileops.cuda.softmax`, `tileops.metal.softmax` |
 | `tileops.norm` | `tileops.cuda.norm`, `tileops.metal.norm` |
 | `tileops.fused` | `tileops.cuda.fused`, `tileops.metal.fused` |
 | `tileops.quant` | `tileops.cuda.quant`, `tileops.metal.quant` |

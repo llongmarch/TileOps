@@ -112,14 +112,18 @@ from tileops.reduction import (
 # ── Re-exports: topk (separate module) ──────────────────────────────────────
 from tileops.topk import topk
 
-# ── Re-exports: norm (softmax, layer norm, …) ────────────────────────────
-from tileops.norm import (
-    layer_norm,
+# ── Re-exports: softmax ──────────────────────────────────────────────────
+from tileops.softmax import (
     log_softmax,
     online_softmax,
-    rms_norm,
     safe_softmax,
     softmax,
+)
+
+# ── Re-exports: norm (layer norm, RMS norm, …) ───────────────────────────
+from tileops.norm import (
+    layer_norm,
+    rms_norm,
     skip_layer_norm,
     skip_rms_norm,
 )
@@ -185,6 +189,12 @@ from tileops.shape import (
     permute, transpose, flip,
     repeat, expand,
 )
+
+# ── Re-exports: pad ──────────────────────────────────────────────────────
+from tileops.pad import pad
+
+# ── Re-exports: interpolate ──────────────────────────────────────────────
+from tileops.interpolate import interpolate
 
 # ── Re-exports: sort ───────────────────────────────────────────────────────
 from tileops.sort import (
@@ -308,11 +318,12 @@ __all__ = [
     "reduce_any",
     "reduce_cumsum",
     "topk",
-    # norm
+    # softmax
     "softmax",
     "safe_softmax",
     "online_softmax",
     "log_softmax",
+    # norm
     "layer_norm",
     "rms_norm",
     "skip_layer_norm",
@@ -356,6 +367,10 @@ __all__ = [
     "cat", "stack", "split", "chunk",
     "permute", "transpose", "flip",
     "repeat", "expand",
+    # pad
+    "pad",
+    # interpolate
+    "interpolate",
     # sort
     "sort", "argsort",
     # quant

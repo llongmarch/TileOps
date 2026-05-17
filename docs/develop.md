@@ -30,13 +30,6 @@
 | `apply_rotary_pos_emb` | RoPE 旋转位置编码 |
 | `reshape_and_cache` | KV cache 管理 |
 
-### 三角函数
-
-| 算子 | 用途 |
-|------|------|
-| `sin` | 正弦（RoPE 位置编码） |
-| `cos` | 余弦（RoPE 位置编码） |
-
 ### 归一化（Normalization — 推理路径）
 
 | 算子 | 用途 |
@@ -44,11 +37,10 @@
 | `batch_norm` | Batch Normalization（eval 模式，使用 running mean/var） |
 | `group_norm` | Group Normalization（ViT、Detectron2、Diffusion 模型） |
 
-### Padding / Pooling
+### Pooling
 
 | 算子 | 用途 |
 |------|------|
-| `pad` | 边界填充（`constant`、`reflect`、`replicate` 模式，卷积前填充） |
 | `max_pool2d` / `max_pool1d` | 最大池化（卷积网络推理） |
 | `avg_pool2d` / `avg_pool1d` | 平均池化（卷积网络推理） |
 
@@ -62,12 +54,6 @@
 |------|------|
 | `adaptive_avg_pool2d` | 自适应平均池化（分类头、特征图下采样） |
 
-### 数值检测
-
-| 算子 | 用途 |
-|------|------|
-| `isnan` / `isinf` / `isfinite` | 数值稳定性检测（推理 Debug） |
-
 ---
 
 ## 🟢 P2 — 低优先级
@@ -76,7 +62,6 @@
 
 | 算子 | 用途 |
 |------|------|
-| `upsample` / `interpolate` | 上采样（双线性/最近邻，分割/生成模型） |
 | `masked_select` | 条件选择（flattened output） |
 | `one_hot` | 独热编码 |
 
@@ -85,15 +70,6 @@
 | 算子 | 用途 |
 |------|------|
 | `instance_norm` | Instance Normalization（风格迁移，推理场景较少） |
-
-### 位运算
-
-| 算子 | 用途 |
-|------|------|
-| `bitwise_and` / `or` / `xor` | int 类型位运算 |
-| `bitwise_not` | 按位取反 |
-
-> **注**：`logical_and` / `logical_or` / `logical_xor` 已实现于 `tileops.binary`，但输出为 float32（0.0/1.0），非整数位运算。
 
 ---
 
@@ -134,6 +110,14 @@
 
 `cat`, `stack`, `split`, `chunk`, `permute`, `transpose`, `flip`, `repeat`, `expand`
 
+### Pad（1）
+
+`pad`
+
+### Interpolate（1）
+
+`interpolate`
+
 ### Sort（2）
 
 `sort`, `argsort`
@@ -142,13 +126,13 @@
 
 `relu`, `sigmoid`, `tanh`, `gelu`, `gelu_exact`, `silu`, `hardswish`, `hardsigmoid`, `leaky_relu`, `relu6`, `elu`, `selu`, `celu`, `hardtanh`, `softplus`, `mish`, `softsign`, `log_sigmoid`
 
-### Unary — 数学（13）
+### Unary — 数学（35）
 
-`exp`, `log`, `sqrt`, `rsqrt`, `square`, `abs`, `sign`, `neg`, `round`, `floor`, `ceil`, `reciprocal`, `clamp`
+`exp`, `log`, `exp2`, `exp10`, `log2`, `log10`, `log1p`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `asinh`, `acosh`, `atanh`, `sqrt`, `rsqrt`, `square`, `erf`, `abs`, `sign`, `neg`, `isnan`, `isinf`, `isfinite`, `round`, `floor`, `ceil`, `trunc`, `reciprocal`, `bitwise_not`, `clamp`
 
-### Binary（22）
+### Binary（29）
 
-`add`, `sub`, `mul`, `div`, `pow`, `fmod`, `remainder`, `floor_div`, `maximum`, `minimum`, `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `atan2`, `copysign`, `hypot`, `xlogy`, `logical_and`, `logical_or`, `logical_xor`
+`add`, `sub`, `mul`, `div`, `pow`, `fmod`, `remainder`, `floor_div`, `maximum`, `minimum`, `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `atan2`, `copysign`, `hypot`, `xlogy`, `logaddexp`, `logical_and`, `logical_or`, `logical_xor`, `bitwise_and`, `bitwise_or`, `bitwise_xor`, `shift_left`, `shift_right`
 
 ### Reduction（10）
 
@@ -158,9 +142,13 @@
 
 `topk`
 
-### Norm / Softmax（8）
+### Softmax（4）
 
-`softmax`, `safe_softmax`, `online_softmax`, `log_softmax`, `layer_norm`, `rms_norm`, `skip_layer_norm`, `skip_rms_norm`
+`softmax`, `safe_softmax`, `online_softmax`, `log_softmax`
+
+### Norm（4）
+
+`layer_norm`, `rms_norm`, `skip_layer_norm`, `skip_rms_norm`
 
 ### Fused（2）
 
@@ -186,6 +174,8 @@
 | `tileops.matrix` | `tileops.cuda.matrix`, `tileops.metal.matrix` |
 | `tileops.sort` | `tileops.cuda.sort`, `tileops.metal.sort` |
 | `tileops.reduction` | `tileops.cuda.reduce`, `tileops.metal.reduce` |
+| `tileops.pad` | `tileops.cuda.pad`, `tileops.metal.pad` + PyTorch ⓡ |
+| `tileops.softmax` | `tileops.cuda.softmax`, `tileops.metal.softmax` |
 | `tileops.norm` | `tileops.cuda.norm`, `tileops.metal.norm` |
 | `tileops.fused` | `tileops.cuda.fused`, `tileops.metal.fused` |
 | `tileops.quant` | `tileops.cuda.quant`, `tileops.metal.quant` |
