@@ -1091,6 +1091,13 @@ from tileops.runtime._infra import (  # noqa: E402
     make_generic_cached_compiler,
 )
 
+# ── Re-exports from autotune ──────────────────────────────────────────────
+
+from tileops.runtime.autotune import (  # noqa: E402
+    default_search_space,
+    search_best_config,
+)
+
 __all__ += [
     "BACKEND_PACKAGES",
     "dispatch_compile",
@@ -1104,4 +1111,6 @@ __all__ += [
     "build_op",
     "make_cached_compiler",
     "make_generic_cached_compiler",
+    "default_search_space",
+    "search_best_config",
 ]
