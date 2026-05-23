@@ -22,7 +22,9 @@ from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,
     default_torch_device,
+    dispatch_compile_attention,
     heuristic_tilelang_target,
+    invoke_attention_kernel,
     invoke_conv_kernel,
     invoke_gather_kernel,
     invoke_tril_triu_kernel,
@@ -118,6 +120,12 @@ from tileops.softmax import (
     online_softmax,
     safe_softmax,
     softmax,
+)
+
+# ── Re-exports: attention ────────────────────────────────────────────────
+from tileops.attention import (
+    flash_attn_v1,
+    flash_attn_v2,
 )
 
 # ── Re-exports: norm (layer norm, RMS norm, …) ───────────────────────────
@@ -246,9 +254,11 @@ __all__ = [
     "default_execution_backend",
     "default_tilelang_target",
     "default_torch_device",
+    "dispatch_compile_attention",
     "heuristic_tilelang_target",
     "invoke_gemm_kernel",
     "invoke_gemv_kernel",
+    "invoke_attention_kernel",
     "invoke_conv_kernel",
     "invoke_gather_kernel",
     "invoke_tril_triu_kernel",
@@ -323,6 +333,9 @@ __all__ = [
     "safe_softmax",
     "online_softmax",
     "log_softmax",
+    # attention
+    "flash_attn_v1",
+    "flash_attn_v2",
     # norm
     "layer_norm",
     "rms_norm",

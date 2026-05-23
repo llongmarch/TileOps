@@ -1,12 +1,6 @@
-"""BLAS-style ops: matrix–matrix / matrix–vector multiply and PyTorch aliases.
+"""GEMM and matrix–matrix aliases (``mm``, ``bmm``, ``addmm``, ``baddbmm``, ``outer``).
 
-``gemm`` / ``gemv`` are the TileLang-backed primitives.  ``mm``, ``mv``,
-``outer``, ``bmm`` wrap them with :class:`torch.Tensor` shapes matching
-``torch.mm``, ``torch.mv``, etc.  ``addmm`` / ``baddbmm`` compute the
-matrix product with the same kernels, then apply ``beta`` / ``alpha`` with
-PyTorch element-wise ops (on-device, broadcast rules match ``torch.addmm``).
-
-Dtypes: ``float32``, ``float16``, ``bfloat16``.
+All ops are backed by the TileLang ``gemm`` kernel.
 """
 
 from __future__ import annotations
@@ -16,13 +10,12 @@ from typing import Optional, Union
 
 import torch
 
-from tileops.runtime import dispatch_compile_blas
 from tileops.runtime import (
     default_execution_backend,
     default_tilelang_target,
     default_torch_device,
+    dispatch_compile_blas,
     invoke_gemm_kernel,
-    invoke_gemv_kernel,
     torch_to_tl_dtype,
 )
 
@@ -75,44 +68,6 @@ def gemm(
     )
 
 
-def gemv(
-    a: torch.Tensor,
-    x: torch.Tensor,
-    *,
-    out: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    """Matrix-vector multiply ``y = A @ x``.
-
-    Shapes: *A* ``(M, K)``, *x* ``(K,)``, output ``(M,)``.
-    """
-    if a.ndim != 2 or x.ndim != 1:
-        raise ValueError("gemv expects A 2-D and x 1-D")
-    m, k = a.shape
-    if x.shape[0] != k:
-        raise ValueError(
-            f"gemv: A.shape[1]={k} != len(x)={x.shape[0]}"
-        )
-    if a.dtype != x.dtype:
-        raise TypeError("gemv: A and x dtypes must match")
-    tl_dtype = torch_to_tl_dtype(a.dtype)
-    tgt = default_tilelang_target()
-    dev = default_torch_device(tgt)
-    eb = default_execution_backend(tgt, dev)
-    kernel = dispatch_compile_blas(
-        op_name="gemv",
-        target=tgt,
-        m=m,
-        k=k,
-        dtype=tl_dtype,
-        execution_backend=eb,
-    )
-    return invoke_gemv_kernel(
-        kernel, a, x, out=out,
-        tilelang_target=tgt,
-        execution_backend=eb,
-    )
-
-
 def mm(
     input: torch.Tensor,
     mat2: torch.Tensor,
@@ -121,16 +76,6 @@ def mm(
 ) -> torch.Tensor:
     """``torch.mm`` — 2-D matrix multiply ``input @ mat2``."""
     return gemm(input, mat2, out=out)
-
-
-def mv(
-    input: torch.Tensor,
-    vec: torch.Tensor,
-    *,
-    out: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    """``torch.mv`` — matrix–vector ``input @ vec``."""
-    return gemv(input, vec, out=out)
 
 
 def outer(
@@ -243,7 +188,6 @@ def addmm(
             f"to {shape_mn}"
         ) from exc
 
-    # --- alpha == 0: skip matmul (match ``torch.addmm`` result shape ``(m, n)``)
     if acoef == 0.0:
         if out is None:
             return torch.mul(torch.broadcast_to(input, shape_mn), bcoef)
@@ -349,15 +293,3 @@ def baddbmm(
             out=out_full[i],
         )
     return out_full
-
-
-__all__ = [
-    "addmm",
-    "baddbmm",
-    "bmm",
-    "gemm",
-    "gemv",
-    "mm",
-    "mv",
-    "outer",
-]

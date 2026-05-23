@@ -572,6 +572,52 @@ def dispatch_compile_quant(
     )
 
 
+def dispatch_compile_attention(
+    *,
+    op_name: str,
+    target: str,
+    m: int,
+    n: int,
+    d: int,
+    scale: float,
+    dtype: Any,
+    execution_backend: Optional[str] = None,
+) -> Any:
+    """Compile a Flash Attention kernel from ``tileops.*.attention``.
+
+    *m* is the total number of query rows (batch × num_heads × seq_len_q),
+    *n* is the key/value sequence length, *d* is the head dimension, and
+    *scale* is the softmax scale (typically ``1 / sqrt(d)``).
+
+    *op_name* is ``"flash_attn_v1"`` or ``"flash_attn_v2"``.
+    """
+    kind = target_kind(target)
+    pkg = BACKEND_PACKAGES.get(kind)
+    if pkg is None:
+        raise NotImplementedError(
+            f"No attention backend for target kind {kind!r} ({target!r}). "
+            f"Supported: {', '.join(sorted(BACKEND_PACKAGES))}."
+        )
+    try:
+        mod = importlib.import_module(f"{pkg}.attention")
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {pkg}.attention for target {target!r}"
+        ) from exc
+
+    fn = getattr(mod, op_name, None)
+    if fn is None:
+        raise NotImplementedError(
+            f"{pkg}.attention has no {op_name}() for {target!r}"
+        )
+    return fn(
+        m, n, d, scale,
+        dtype=dtype,
+        target=target,
+        execution_backend=execution_backend,
+    )
+
+
 def dispatch_compile_conv(
     *,
     op_name: str,

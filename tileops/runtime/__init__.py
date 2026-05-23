@@ -47,6 +47,7 @@ __all__ = [
     "default_tilelang_target",
     "default_torch_device",
     "heuristic_tilelang_target",
+    "invoke_attention_kernel",
     "invoke_conv_kernel",
     "invoke_gather_kernel",
     "invoke_tril_triu_kernel",
@@ -933,6 +934,68 @@ def invoke_unary_kernel(
                         execution_backend=execution_backend)
 
 
+def invoke_attention_kernel(
+    kernel: Any,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    *,
+    out: Optional[torch.Tensor] = None,
+    tilelang_target: Optional[str] = None,
+    execution_backend: Optional[str] = None,
+) -> torch.Tensor:
+    """Run a compiled Flash Attention kernel.
+
+    *q* and *out* share shape ``(M, D)``; *k* and *v* are ``(N, D)``.
+    Buffers are flattened before the call.
+    """
+    if q.ndim != 2 or k.ndim != 2 or v.ndim != 2:
+        raise ValueError("invoke_attention_kernel expects 2-D Q, K, V")
+    m, d = q.shape
+    n = k.shape[0]
+    if k.shape[1] != d or v.shape[1] != d:
+        raise ValueError(
+            f"invoke_attention_kernel: head-dim mismatch "
+            f"Q.shape[1]={d}, K.shape[1]={k.shape[1]}, V.shape[1]={v.shape[1]}"
+        )
+    if v.shape[0] != n:
+        raise ValueError(
+            f"invoke_attention_kernel: K seq_len={n}, V seq_len={v.shape[0]}"
+        )
+    if q.dtype != k.dtype or q.dtype != v.dtype:
+        raise TypeError("invoke_attention_kernel: Q, K, V dtypes must match")
+    if q.device != k.device or q.device != v.device:
+        raise TypeError("invoke_attention_kernel: Q, K, V must share device")
+
+    qf = q.contiguous().view(-1)
+    kf = k.contiguous().view(-1)
+    vf = v.contiguous().view(-1)
+
+    if out is None:
+        out = torch.empty(m, d, dtype=q.dtype, device=q.device)
+    else:
+        if out.shape != (m, d):
+            raise ValueError(
+                f"invoke_attention_kernel: out.shape={tuple(out.shape)} != ({m}, {d})"
+            )
+        if out.dtype != q.dtype or out.device != q.device:
+            raise TypeError("invoke_attention_kernel: out dtype/device must match Q")
+
+    of = out.contiguous().view(-1)
+    tgt = tilelang_target if tilelang_target is not None else default_tilelang_target()
+    dev = default_torch_device(tgt)
+    eb = (
+        execution_backend
+        if execution_backend is not None
+        else default_execution_backend(tgt, dev)
+    )
+    _call_compiled_kernel(kernel, qf, kf, vf, out=of,
+                          kind=target_kind(tgt), execution_backend=eb)
+    if of.data_ptr() != out.data_ptr():
+        out.copy_(of)
+    return out
+
+
 def invoke_conv_kernel(
     kernel: Any,
     input: torch.Tensor,
@@ -1079,6 +1142,7 @@ def bench_ms(
 from tileops.runtime._infra import (  # noqa: E402
     BACKEND_PACKAGES,
     dispatch_compile,
+    dispatch_compile_attention,
     dispatch_compile_blas,
     dispatch_compile_conv,
     dispatch_compile_norm,
@@ -1101,6 +1165,7 @@ from tileops.runtime.autotune import (  # noqa: E402
 __all__ += [
     "BACKEND_PACKAGES",
     "dispatch_compile",
+    "dispatch_compile_attention",
     "dispatch_compile_blas",
     "dispatch_compile_conv",
     "dispatch_compile_norm",
